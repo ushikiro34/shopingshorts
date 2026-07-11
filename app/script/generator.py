@@ -12,6 +12,7 @@ import time
 import anthropic
 
 from app.config import ANTHROPIC_API_KEY, DEFAULT_TARGET_PERSONA
+from app.llm_utils import parse_json_response
 from app.script.prompts import build_system_prompt, build_user_prompt
 
 MODEL = "claude-sonnet-4-5"
@@ -44,12 +45,12 @@ def generate_script(
         try:
             message = active_client.messages.create(
                 model=MODEL,
-                max_tokens=2048,
+                max_tokens=4096,
                 system=system_prompt,
                 messages=[{"role": "user", "content": user_prompt}],
             )
             text = message.content[0].text
-            return json.loads(text)
+            return parse_json_response(text)
         except (json.JSONDecodeError, anthropic.APIError) as exc:
             last_error = exc
             if attempt == 0:

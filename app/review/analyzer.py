@@ -12,6 +12,7 @@ import time
 import anthropic
 
 from app.config import ANTHROPIC_API_KEY
+from app.llm_utils import parse_json_response
 
 MODEL = "claude-sonnet-4-5"
 
@@ -76,7 +77,7 @@ def analyze_reviews(reviews_raw: str, client: anthropic.Anthropic | None = None)
                 messages=[{"role": "user", "content": reviews_raw}],
             )
             text = message.content[0].text
-            data = json.loads(text)
+            data = parse_json_response(text)
             _validate_shape(data)
             return data
         except (json.JSONDecodeError, ReviewAnalysisError, anthropic.APIError) as exc:

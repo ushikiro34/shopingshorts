@@ -39,23 +39,35 @@ NO_EDUCATIONAL_NOTE_INSTRUCTION = (
     'educational_note는 이 상품에 해당하지 않으므로 {"included": false, "text": ""}로 둔다.'
 )
 
-OUTPUT_SCHEMA_EXAMPLE = {
-    "structure": {
-        "empathy": "...",
-        "emotion": "...",
-        "problem": "...",
-        "solution": "...",
-        "product": "...",
-    },
-    "educational_note": {"included": False, "text": ""},
-    "tone": "생활팁",
-    "scenes": [
-        {"seq": 1, "narration": "...", "caption": "...", "image_index": 0, "duration_sec": 5}
-    ],
-    "disclosure": PARTNERS_DISCLOSURE,
-    "estimated_duration_sec": 45,
-    "youtube": {"title": "...", "description": "...", "tags": ["..."]},
-}
+def _build_output_schema_example(needs_education: bool) -> dict:
+    """needs_education 값에 맞는 educational_note 예시를 보여준다.
+
+    항상 included=false 예시만 주면 모델이 지시문보다 예시를 따라가
+    needs_education=true인 상품에도 educational_note를 비워버리는 문제가 있었다.
+    """
+    educational_note_example = (
+        {"included": True, "text": "자외선은 피부 노화를 유발할 수 있어요."}
+        if needs_education
+        else {"included": False, "text": ""}
+    )
+    return {
+        "structure": {
+            "empathy": "...",
+            "emotion": "...",
+            "problem": "...",
+            "solution": "...",
+            "product": "...",
+        },
+        "educational_note": educational_note_example,
+        "tone": "생활팁",
+        "scenes": [
+            {"seq": 1, "narration": "...", "caption": "...", "image_index": 0, "duration_sec": 5},
+            {"seq": 2, "narration": "...", "caption": "...", "image_index": 0, "duration_sec": 5},
+        ],
+        "disclosure": PARTNERS_DISCLOSURE,
+        "estimated_duration_sec": 45,
+        "youtube": {"title": "...", "description": "...", "tags": ["..."]},
+    }
 
 
 def build_system_prompt(tone: str, needs_education: bool) -> str:
@@ -63,6 +75,7 @@ def build_system_prompt(tone: str, needs_education: bool) -> str:
         raise ValueError(f"tone은 {SCRIPT_TONES} 중 하나여야 합니다: {tone}")
 
     education_block = EDUCATIONAL_NOTE_INSTRUCTION if needs_education else NO_EDUCATIONAL_NOTE_INSTRUCTION
+    schema_example = _build_output_schema_example(needs_education)
 
     return f"""너는 쿠팡 파트너스 쇼츠 대본을 쓰는 AI 직원이다.
 
@@ -75,14 +88,18 @@ def build_system_prompt(tone: str, needs_education: bool) -> str:
 
 {education_block}
 
-제약:
-- scenes는 3~8개, narration을 합친 전체 영상 길이(estimated_duration_sec)는 30~60초.
+제약(반드시 지켜야 하며, 어기면 시스템이 자동으로 반려한다):
+- scenes 배열의 원소 개수는 반드시 3개 이상 8개 이하다. 9개 이상은 절대 금지. 5단계 구조를 scene 여러 개로
+  나누더라도 총합이 8을 넘지 않게 통합하라 (예: problem+educational_note를 한 scene에 같이 담아도 된다).
+- narration을 모두 합친 영상 길이(estimated_duration_sec)는 30~60초.
 - narration에는 리뷰 원문 문장을 그대로 옮기지 않는다 (재구성된 표현만 사용).
 - disclosure 필드에는 반드시 다음 문구를 정확히 그대로 넣는다: "{PARTNERS_DISCLOSURE}"
 - tone 필드에는 "{tone}"을 그대로 넣는다.
+- educational_note 필드는 위 지시를 정확히 따른다. 아래 예시의 included/text 값을 그대로 참고하라
+  (예시가 아니라 지시 내용이 기준이다 — 이 상품의 needs_education은 {str(needs_education).lower()}이다).
 
-다른 설명 없이 아래와 같은 형태의 JSON 객체 하나만 출력한다:
-{json.dumps(OUTPUT_SCHEMA_EXAMPLE, ensure_ascii=False, indent=2)}"""
+다른 설명 없이 아래와 같은 형태의 JSON 객체 하나만 출력한다 (scenes는 예시일 뿐 실제로는 3~8개를 채운다):
+{json.dumps(schema_example, ensure_ascii=False, indent=2)}"""
 
 
 def build_user_prompt(
