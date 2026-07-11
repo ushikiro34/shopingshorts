@@ -8,9 +8,10 @@
 ## 규칙 준수 (samples 전부)
 - [ ] 4. analysis_json이 reviews_raw 문장을 그대로 복사하지 않았다 (요약·재구성 형태인지 육안 확인)
 - [ ] 5. 모든 대본 narration이 reviews_raw와 8단어 이상 연속 일치 0건 (자동 검사)
-- [ ] 6. `structure`의 5개 필드(empathy, emotion, problem, solution, product)가 모두 비어있지 않고, product 필드에 CTA·가격 언급이 포함되어 있다
+- [ ] 6. `structure`의 5개 필드(empathy, emotion, problem, solution, product)가 모두 비어있지 않고, product 필드에 "본문/더보기/설명란" 등 링크 확인을 유도하는 CTA가 포함되어 있다
+- [ ] 6b. (v2.2) narration(`structure.*`, `scenes[].narration`)과 `youtube.title`/`youtube.description`을 통틀어 가격(숫자+"원") 표기가 0건이다 (자동 검사)
 - [ ] 7. `tone`이 정의된 7종 중 하나이고, 서로 다른 톤으로 생성한 같은 상품 대본 2개가 실제로 다른 접근을 취한다 (육안 비교)
-- [ ] 8. disclosure 상수 일치, youtube.description에 딥링크+고지 포함
+- [ ] 8. disclosure 상수 일치. (v2.2) narration에는 disclosure 문구가 포함되지 않고, `youtube.description`은 반드시 disclosure 문구로 끝난다 (자동 검사)
 - [ ] 9. scenes 3~8개, 30~60초
 
 ## 사실설명(educational_note) — needs_education=true 상품에 한함

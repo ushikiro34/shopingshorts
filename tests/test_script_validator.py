@@ -4,7 +4,10 @@ from app.config import PARTNERS_DISCLOSURE
 from app.script.validator import (
     ScriptValidationError,
     has_verbatim_overlap,
+    validate_cta_redirects_to_description,
+    validate_disclosure_placement,
     validate_educational_note,
+    validate_no_price_mention,
     validate_script,
 )
 
@@ -16,7 +19,7 @@ def _base_script(**overrides) -> dict:
             "emotion": "낮에도 피곤하고 짜증나셨죠.",
             "problem": "잠을 설치면 하루종일 컨디션이 무너져요.",
             "solution": "숙면 루틴을 도와주는 도구가 필요해요.",
-            "product": "이 수면 안대는 2만원대라 부담없이 시작할 수 있어요. 링크는 더보기에서 확인하세요.",
+            "product": "이 수면 안대 하나로 편하게 주무세요. 제품정보는 본문에 있어요, 확인해보세요.",
         },
         "educational_note": {"included": False, "text": ""},
         "tone": "생활팁",
@@ -29,7 +32,11 @@ def _base_script(**overrides) -> dict:
         ],
         "disclosure": PARTNERS_DISCLOSURE,
         "estimated_duration_sec": 40,
-        "youtube": {"title": "t", "description": "d", "tags": ["tag"]},
+        "youtube": {
+            "title": "t",
+            "description": f"편안한 수면을 위한 선택. 구매 링크는 본문 더보기에서 확인해 주세요.\n\n{PARTNERS_DISCLOSURE}",
+            "tags": ["tag"],
+        },
     }
     script.update(overrides)
     return script
@@ -131,4 +138,71 @@ def test_educational_note_tempered_language_passes():
         educational_note={"included": True, "text": "자외선은 피부 노화를 유발할 수 있어요."}
     )
     errors = validate_educational_note(script, needs_education=True)
+    assert errors == []
+
+
+# v2.2: 가격 미표기 + 본문 유도 CTA + 고지문구 위치 (사용자 피드백 반영)
+
+
+def test_price_in_product_field_rejected():
+    script = _base_script()
+    script["structure"]["product"] = "이 안대는 18,900원이에요. 본문에서 확인하세요."
+    errors = validate_no_price_mention(script)
+    assert any("18,900원" in e for e in errors)
+
+
+def test_price_manwon_style_rejected():
+    script = _base_script()
+    script["structure"]["product"] = "이 안대는 2만원대라 부담없어요. 본문에서 확인하세요."
+    errors = validate_no_price_mention(script)
+    assert errors
+
+
+def test_price_in_scene_narration_rejected():
+    script = _base_script()
+    script["scenes"][-1]["narration"] = "12000원에 만나보세요"
+    errors = validate_no_price_mention(script)
+    assert errors
+
+
+def test_price_in_youtube_description_rejected():
+    script = _base_script()
+    script["youtube"]["description"] = f"18,900원 특가! 본문 확인.\n\n{PARTNERS_DISCLOSURE}"
+    errors = validate_no_price_mention(script)
+    assert errors
+
+
+def test_no_price_mention_passes_when_absent():
+    errors = validate_no_price_mention(_base_script())
+    assert errors == []
+
+
+def test_cta_missing_redirect_hint_rejected():
+    script = _base_script()
+    script["structure"]["product"] = "이 안대 정말 좋아요. 꼭 사보세요."
+    errors = validate_cta_redirects_to_description(script)
+    assert errors
+
+
+def test_cta_with_redirect_hint_passes():
+    errors = validate_cta_redirects_to_description(_base_script())
+    assert errors == []
+
+
+def test_disclosure_in_narration_rejected():
+    script = _base_script()
+    script["structure"]["product"] += f" {PARTNERS_DISCLOSURE}"
+    errors = validate_disclosure_placement(script)
+    assert any("narration" in e for e in errors)
+
+
+def test_description_not_ending_with_disclosure_rejected():
+    script = _base_script()
+    script["youtube"]["description"] = "그냥 설명입니다"
+    errors = validate_disclosure_placement(script)
+    assert any("고지문구로 끝나지" in e for e in errors)
+
+
+def test_disclosure_placement_passes_when_correct():
+    errors = validate_disclosure_placement(_base_script())
     assert errors == []

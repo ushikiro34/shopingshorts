@@ -14,8 +14,8 @@ STRUCTURE_INSTRUCTION = """구조는 정확히 5단계로 고정한다: 공감 -
 - emotion: 공감을 구체적 감정(답답함/불안/설렘 등)으로 증폭시키는 문장
 - problem: 그 감정의 원인이 되는 문제를 명확히 짚는 문장
 - solution: 문제를 해결하는 방향성 제시 (아직 상품명 등장 전)
-- product: 상품 등장 + 리뷰 근거 + 가격/CTA까지 포함하는 마무리 문장들
-CTA와 고지문구는 별도 단계가 아니라 product 단계 마지막 문장에 자연스럽게 포함한다."""
+- product: 상품 등장 + 리뷰 근거 + CTA까지 포함하는 마무리 문장들 (가격은 언급하지 않는다)
+CTA는 별도 단계가 아니라 product 단계 마지막 문장에 자연스럽게 포함한다."""
 
 TONE_INSTRUCTIONS = {
     "불편해결": "일상의 불편함을 짚고, 상품이 그 불편을 없애준다는 실용적 해결 톤으로 쓴다.",
@@ -24,7 +24,7 @@ TONE_INSTRUCTIONS = {
     "생활팁": "생활 노하우를 공유하는 친근한 정보성 톤으로 쓴다.",
     "사실형": "과장 없이 담백하게 사실과 근거 위주로 쓴다.",
     "생활형": "일상 대화하듯 편안하고 자연스러운 톤으로 쓴다.",
-    "실리적": "가격 대비 효용을 강조하는 실속형 톤으로 쓴다.",
+    "실리적": "가격 숫자 대신 '가성비'/'효율' 같은 개념으로 실속을 강조하는 톤으로 쓴다.",
 }
 
 EDUCATIONAL_NOTE_INSTRUCTION = """이 상품은 needs_education=true이므로 problem 단계 직후에 삽입할
@@ -38,6 +38,21 @@ educational_note는 {"included": true, "text": "..."} 형태로 채운다."""
 NO_EDUCATIONAL_NOTE_INSTRUCTION = (
     'educational_note는 이 상품에 해당하지 않으므로 {"included": false, "text": ""}로 둔다.'
 )
+
+# v2.2: 가격은 표기하지 않고 "본문 확인"으로 유도, 고지문구는 narration이 아니라
+# youtube.description 마지막 줄에만 넣는다 (사용자 피드백 반영).
+PRICE_INSTRUCTION = """가격은 narration/구조(structure)/youtube.title/youtube.description 어디에도
+숫자로 표기하지 않는다 (예: "18,900원", "2만원대" 금지 — 가격은 변동될 수 있고 딥링크를 눌러야 최신가를
+확인하게 유도하는 편이 낫다). 구매를 유도할 때는 "제품정보(가격 포함)는 본문에 있어요, 확인해보세요"처럼
+"본문"/"더보기"/"설명란" 중 하나를 반드시 포함한 문구로 마무리한다."""
+
+DISCLOSURE_PLACEMENT_INSTRUCTION = f"""고지문구는 narration(structure의 모든 필드, scenes[].narration)에는
+절대 넣지 않는다 — 음성으로 낭독하지 않는다. youtube.description의 맨 마지막 줄에만 아래 문구를 정확히
+그대로 넣는다: "{PARTNERS_DISCLOSURE}"
+description 앞부분에는 상품 매력 요약과 구매 링크 안내를 넣는다: user 메시지의 product.deeplink 값이 있으면
+그 URL을 그대로 포함하고, 없으면 "구매 링크는 본문 더보기에서 확인해 주세요"라는 안내문으로 대체한다.
+그 다음 줄(빈 줄로 구분)에 위 고지문구를 붙인다."""
+
 
 def _build_output_schema_example(needs_education: bool) -> dict:
     """needs_education 값에 맞는 educational_note 예시를 보여준다.
@@ -56,7 +71,7 @@ def _build_output_schema_example(needs_education: bool) -> dict:
             "emotion": "...",
             "problem": "...",
             "solution": "...",
-            "product": "...",
+            "product": "... 제품정보는 본문에 있어요, 확인해보세요.",
         },
         "educational_note": educational_note_example,
         "tone": "생활팁",
@@ -66,7 +81,11 @@ def _build_output_schema_example(needs_education: bool) -> dict:
         ],
         "disclosure": PARTNERS_DISCLOSURE,
         "estimated_duration_sec": 45,
-        "youtube": {"title": "...", "description": "...", "tags": ["..."]},
+        "youtube": {
+            "title": "...",
+            "description": f"... 구매 링크는 본문 더보기에서 확인해 주세요.\n\n{PARTNERS_DISCLOSURE}",
+            "tags": ["..."],
+        },
     }
 
 
@@ -87,6 +106,10 @@ def build_system_prompt(tone: str, needs_education: bool) -> str:
 예: 분석 결과에 "갱년기", "새벽에 깬다"가 반복되면 훅은 "요즘 새벽마다 깨시나요?"처럼 만든다.
 
 {education_block}
+
+{PRICE_INSTRUCTION}
+
+{DISCLOSURE_PLACEMENT_INSTRUCTION}
 
 제약(반드시 지켜야 하며, 어기면 시스템이 자동으로 반려한다):
 - scenes 배열의 원소 개수는 반드시 3개 이상 8개 이하다. 9개 이상은 절대 금지. 5단계 구조를 scene 여러 개로
@@ -109,8 +132,8 @@ def build_user_prompt(
 ) -> str:
     payload = {
         "product_name": product.get("product_name"),
-        "price": product.get("price"),
         "category": product.get("category"),
+        "deeplink": product.get("deeplink"),
         "target_persona": target_persona,
         "analysis": analysis_json,
     }

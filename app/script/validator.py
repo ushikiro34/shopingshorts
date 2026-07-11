@@ -6,6 +6,8 @@ docs/03_interfaces.md 4번 스키마 + docs/phase2_checklist.md 기준.
 
 from __future__ import annotations
 
+import re
+
 from app.config import EDUCATION_FORBIDDEN_KEYWORDS, PARTNERS_DISCLOSURE, SCRIPT_TONES
 
 STRUCTURE_FIELDS = ["empathy", "emotion", "problem", "solution", "product"]
@@ -14,6 +16,12 @@ MAX_SCENES = 8
 MIN_DURATION_SEC = 30
 MAX_DURATION_SEC = 60
 MIN_VERBATIM_OVERLAP_WORDS = 8
+
+# v2.2: 가격은 어디에도 숫자로 표기하지 않는다 (사용자 피드백) — "18,900원", "2만원대" 등을 잡는다.
+PRICE_PATTERN = re.compile(r"\d[\d,]*\s*만?\s*원")
+
+# CTA는 "본문/더보기/설명란"에서 확인하도록 유도하는 문구를 포함해야 한다.
+CTA_REDIRECT_HINTS = ["본문", "더보기", "설명란"]
 
 
 class ScriptValidationError(RuntimeError):
@@ -92,6 +100,52 @@ def validate_no_verbatim_leak(script_json: dict, reviews_raw: str) -> list[str]:
     return errors
 
 
+def _narration_texts(script_json: dict) -> list[str]:
+    structure = script_json.get("structure") or {}
+    texts = [structure.get(field, "") or "" for field in STRUCTURE_FIELDS]
+    texts += [scene.get("narration", "") or "" for scene in script_json.get("scenes") or []]
+    return texts
+
+
+def validate_no_price_mention(script_json: dict) -> list[str]:
+    """narration과 youtube 텍스트 어디에도 가격을 숫자로 표기하지 않아야 한다 (v2.2)."""
+    errors = []
+    youtube = script_json.get("youtube") or {}
+    fields_to_check = _narration_texts(script_json) + [
+        youtube.get("title", "") or "",
+        youtube.get("description", "") or "",
+    ]
+    for text in fields_to_check:
+        match = PRICE_PATTERN.search(text)
+        if match:
+            errors.append(f"가격으로 보이는 표현 '{match.group()}'이 포함되어 있습니다 (가격은 표기하지 않습니다).")
+    return errors
+
+
+def validate_cta_redirects_to_description(script_json: dict) -> list[str]:
+    """product narration이 '본문/더보기/설명란' 등으로 링크 확인을 유도해야 한다 (v2.2)."""
+    structure = script_json.get("structure") or {}
+    combined = structure.get("product", "") or ""
+    if not any(hint in combined for hint in CTA_REDIRECT_HINTS):
+        return [
+            "structure.product에 '본문/더보기/설명란' 등 링크 확인을 유도하는 CTA 문구가 없습니다."
+        ]
+    return []
+
+
+def validate_disclosure_placement(script_json: dict) -> list[str]:
+    """고지문구는 narration에는 없고, youtube.description 마지막 줄에만 있어야 한다 (v2.2)."""
+    errors = []
+    if any(PARTNERS_DISCLOSURE in text for text in _narration_texts(script_json)):
+        errors.append("narration/structure에 고지문구(disclosure)가 포함되어 있습니다 (음성으로 낭독하지 않습니다).")
+
+    description = ((script_json.get("youtube") or {}).get("description") or "").rstrip()
+    if not description.endswith(PARTNERS_DISCLOSURE):
+        errors.append("youtube.description이 고지문구로 끝나지 않습니다.")
+
+    return errors
+
+
 def validate_educational_note(script_json: dict, needs_education: bool) -> list[str]:
     errors = []
     note = script_json.get("educational_note") or {}
@@ -121,6 +175,9 @@ def validate_script(script_json: dict, reviews_raw: str, needs_education: bool) 
     errors += validate_scenes(script_json)
     errors += validate_no_verbatim_leak(script_json, reviews_raw)
     errors += validate_educational_note(script_json, needs_education)
+    errors += validate_no_price_mention(script_json)
+    errors += validate_cta_redirects_to_description(script_json)
+    errors += validate_disclosure_placement(script_json)
 
     if errors:
         raise ScriptValidationError(errors)
