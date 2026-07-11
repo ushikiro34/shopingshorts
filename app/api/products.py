@@ -3,12 +3,16 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, model_validator
 
-from app.config import DEFAULT_MIN_SCORE
+from app.api.common import get_product_or_404
+from app.config import DEFAULT_MIN_SCORE, DEFAULT_TARGET_PERSONA, SCRIPT_TONES
 from app.coupang.partners import CoupangPartnersError, create_deeplinks, search_products
 from app.db import get_client
 from app.discovery.education import detect_needs_education
 from app.discovery.scoring import MAX_TOTAL_SCORE, ScoreInputs, calculate_score, score_story
 from app.discovery.story_heuristic import count_emotional_keywords
+from app.review.analyzer import ReviewAnalysisError, analyze_reviews
+from app.script.generator import ScriptGenerationError, generate_script
+from app.script.validator import ScriptValidationError, validate_script
 
 router = APIRouter(prefix="/api", tags=["products"])
 
@@ -33,10 +37,22 @@ class NeedsEducationPatch(BaseModel):
     needs_education: bool
 
 
-def _get_product_or_404(client, product_id: str) -> dict:
-    result = client.table("products").select("*").eq("id", product_id).execute()
+class GenerateScriptRequest(BaseModel):
+    tone: str
+    target_persona: str | None = None
+
+
+def _get_latest_review_or_400(client, product_id: str) -> dict:
+    result = (
+        client.table("reviews")
+        .select("*")
+        .eq("product_id", product_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
     if not result.data:
-        raise HTTPException(status_code=404, detail="상품을 찾을 수 없습니다.")
+        raise HTTPException(status_code=400, detail="리뷰가 입력되지 않았습니다. 먼저 리뷰를 등록하세요.")
     return result.data[0]
 
 
@@ -112,7 +128,7 @@ def list_products(min_score: int = DEFAULT_MIN_SCORE):
 @router.post("/products/{product_id}/reviews", status_code=201)
 def add_review(product_id: str, payload: ReviewInput):
     client = get_client()
-    product = _get_product_or_404(client, product_id)
+    product = get_product_or_404(client, product_id)
 
     review_row = {
         "product_id": product_id,
@@ -146,7 +162,7 @@ def add_review(product_id: str, payload: ReviewInput):
 @router.patch("/products/{product_id}/needs-education")
 def update_needs_education(product_id: str, payload: NeedsEducationPatch):
     client = get_client()
-    _get_product_or_404(client, product_id)
+    get_product_or_404(client, product_id)
     result = (
         client.table("products")
         .update({"needs_education": payload.needs_education})
@@ -154,3 +170,82 @@ def update_needs_education(product_id: str, payload: NeedsEducationPatch):
         .execute()
     )
     return result.data[0]
+
+
+@router.post("/products/{product_id}/analyze-reviews", status_code=201)
+def analyze_product_reviews(product_id: str):
+    client = get_client()
+    get_product_or_404(client, product_id)
+    review = _get_latest_review_or_400(client, product_id)
+
+    try:
+        analysis_json = analyze_reviews(review["reviews_raw"])
+    except ReviewAnalysisError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    analysis_result = (
+        client.table("review_analysis")
+        .insert({"review_id": review["id"], "analysis_json": analysis_json})
+        .execute()
+    )
+    client.table("products").update({"status": "analyzed"}).eq("id", product_id).execute()
+    return analysis_result.data[0]
+
+
+@router.post("/products/{product_id}/generate-script", status_code=201)
+def generate_product_script(product_id: str, payload: GenerateScriptRequest):
+    client = get_client()
+    product = get_product_or_404(client, product_id)
+
+    if payload.tone not in SCRIPT_TONES:
+        raise HTTPException(status_code=400, detail=f"tone은 {SCRIPT_TONES} 중 하나여야 합니다.")
+
+    review = _get_latest_review_or_400(client, product_id)
+    analysis_result = (
+        client.table("review_analysis")
+        .select("*")
+        .eq("review_id", review["id"])
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    if not analysis_result.data:
+        raise HTTPException(status_code=400, detail="먼저 /analyze-reviews를 호출하세요.")
+    analysis = analysis_result.data[0]
+
+    needs_education = bool(product.get("needs_education", False))
+    target_persona = payload.target_persona or DEFAULT_TARGET_PERSONA
+
+    try:
+        script_json = generate_script(
+            analysis_json=analysis["analysis_json"],
+            product=product,
+            tone=payload.tone,
+            needs_education=needs_education,
+            target_persona=target_persona,
+        )
+    except ScriptGenerationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    try:
+        validate_script(script_json, review["reviews_raw"], needs_education)
+    except ScriptValidationError as exc:
+        raise HTTPException(
+            status_code=422, detail={"message": "대본 검증 실패", "errors": exc.errors}
+        ) from exc
+
+    script_result = (
+        client.table("scripts")
+        .insert(
+            {
+                "product_id": product_id,
+                "analysis_id": analysis["id"],
+                "target_persona": target_persona,
+                "tone": payload.tone,
+                "script_json": script_json,
+            }
+        )
+        .execute()
+    )
+    client.table("products").update({"status": "script_generated"}).eq("id", product_id).execute()
+    return script_result.data[0]

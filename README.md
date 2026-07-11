@@ -1,13 +1,14 @@
-# couparvi — Phase 1
+# couparvi — Phase 1 + Phase 2
 
-쿠팡 파트너스 쇼츠 자동 제작 파이프라인. 현재 구현 범위는 **Phase 1(상품발굴 & 후기수집)**만이다.
-전체 배경은 `docs/00_project_overview.md`, 규칙은 `AGENTS.md` 참조.
+쿠팡 파트너스 쇼츠 자동 제작 파이프라인. 현재 구현 범위는 **Phase 1(상품발굴 & 후기수집)**과
+**Phase 2(AI 후기분석 & 대본작성)**다. 전체 배경은 `docs/00_project_overview.md`, 규칙은 `AGENTS.md` 참조.
 
 ## 요구 사항
 
 - Python 3.11+
 - Supabase 프로젝트 (Postgres)
 - 쿠팡 파트너스 API 액세스키/시크릿키
+- Anthropic API 키 (Phase 2 — 후기 분석/대본 생성)
 
 ## 설치
 
@@ -23,10 +24,12 @@ cp .env.example .env
 
 ## 마이그레이션 적용
 
-`migrations/001_init.sql`을 Supabase SQL Editor에 붙여넣어 실행하거나, `psql`로 적용한다.
+`migrations/001_init.sql`, `migrations/002_phase2.sql`을 순서대로 Supabase SQL Editor에
+붙여넣어 실행하거나, `psql`로 적용한다.
 
 ```bash
 psql "$SUPABASE_DB_URL" -f migrations/001_init.sql
+psql "$SUPABASE_DB_URL" -f migrations/002_phase2.sql
 ```
 
 ## 실행
@@ -46,10 +49,17 @@ uvicorn app.main:app --reload
 | GET | `/api/products?min_score=80` | 추천 후보 목록 (기본 80점 이상) |
 | POST | `/api/products/{id}/reviews` | 리뷰 원문+별점 저장 → `reviews_collected`, story_score 재계산 |
 | PATCH | `/api/products/{id}/needs-education` | `needs_education` 수동 토글 |
+| POST | `/api/products/{id}/analyze-reviews` | 최신 리뷰를 Claude로 분석 → `review_analysis` 저장, status `analyzed` |
+| POST | `/api/products/{id}/generate-script` | body: `{tone, target_persona?}`. 구조+톤 이중 프롬프트로 대본 생성·검증 → `scripts` 저장, status `script_generated` |
+| PATCH | `/api/scripts/{id}` | `script_json` 수동 수정, `version` +1 |
 
 `keyword`로 발굴하면 파트너스 검색 API에서 상품명·가격·이미지·카테고리·리뷰수까지 채워진다.
 `coupang_url`로 발굴하면 딥링크만 생성되고 나머지 필드는 비어 있다 — 크롤링 없이는 상세정보를
 가져올 수 없기 때문(AGENTS.md 절대 규칙 1). 이 경우 상품명 등은 사람이 보완 입력한다(Phase 1 이후 확장).
+
+`tone`은 `불편해결/우월감/보상/생활팁/사실형/생활형/실리적` 7종 중 하나. 생성된 대본은
+`app/script/validator.py`가 구조(5필드)·톤·disclosure·scenes 개수/길이·리뷰 원문 유출(8단어 이상
+연속 일치)·`educational_note` 규칙을 모두 통과해야 저장된다. 검증 실패 시 422와 함께 사유 목록을 반환한다.
 
 ## 테스트
 
@@ -57,10 +67,12 @@ uvicorn app.main:app --reload
 pytest tests/ -v
 ```
 
-`tests/test_scoring.py`는 스코어링 배점(overview.md 표)이 항목별 상한을 넘지 않고 합계가 100을
-초과하지 않는지 검증한다. `tests/test_education.py`는 `EDUCATION_TRIGGER_KEYWORDS` 매칭을 검증한다.
+- `tests/test_scoring.py`: 스코어링 배점(overview.md 표)이 항목별 상한을 넘지 않고 합계가 100을 초과하지 않는지 검증
+- `tests/test_education.py`: `EDUCATION_TRIGGER_KEYWORDS` 매칭 검증
+- `tests/test_script_validator.py`: 대본 스키마/원문유출/educational_note 규칙 검증 (API 키 불필요)
+- `tests/test_review_script_generation.py`: analyzer/generator의 JSON 파싱·재시도 로직을 가짜(fake) Anthropic 클라이언트로 검증 (API 키 불필요)
 
-## 제외 범위 (Phase 1이 아님)
+## 제외 범위 (Phase 1~2가 아님)
 
-후기 분석(AI), 대본 생성, 미디어 파이프라인, 대시보드 UI, 쿠팡 페이지 크롤링(절대 금지) —
-`docs/phase1_spec.md` 참조.
+미디어 파이프라인(이미지/음성/영상), 대시보드 UI, 업로드, 쿠팡 페이지 크롤링(절대 금지) —
+`docs/phase1_spec.md`, `docs/phase2_spec.md` 참조.

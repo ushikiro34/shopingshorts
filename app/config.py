@@ -28,8 +28,22 @@ COUPANG_SECRET_KEY = os.getenv("COUPANG_SECRET_KEY", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+
 # 상품 스코어링 — docs/00_project_overview.md의 "충동구매 가능성" 임계값.
 IMPULSE_PRICE_THRESHOLD = 30000
 
 # GET /api/products 기본 노출 임계값 (하루 3편 목표라 70 -> 80으로 상향, overview.md v2.1 참조).
 DEFAULT_MIN_SCORE = 80
+
+# docs/00_project_overview.md "대본 설계" — 대본 톤 7종.
+SCRIPT_TONES = ["불편해결", "우월감", "보상", "생활팁", "사실형", "생활형", "실리적"]
+
+DEFAULT_TARGET_PERSONA = "40-50대 여성"
+
+# docs/03_interfaces.md 4번 — educational_note에 절대 포함되면 안 되는 진단/치료/효능보장 암시 표현.
+# 목록은 초기값이며 운영하면서 보강한다.
+EDUCATION_FORBIDDEN_KEYWORDS = [
+    "치료됩니다", "완치", "100% 예방", "완치됩니다", "예방됩니다",
+    "질병을 낫게", "효과가 보장", "부작용 없이 치료", "즉시 완쾌",
+]
