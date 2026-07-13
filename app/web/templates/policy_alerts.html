@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}정책 알림 · couparvi{% endblock %}
+{% block content %}
+<h2>정책 변경 알림</h2>
+{% if alerts %}
+  {% for a in alerts %}
+  <div class="panel" style="margin-bottom:12px;">
+    <p>
+      <span class="pill {% if a.reviewed %}pill-gray{% else %}pill-danger{% endif %}">
+        {{ a.policy_snapshots.platform }}
+      </span>
+      <strong>{{ a.policy_snapshots.policy_name }}</strong>
+    </p>
+    <p style="color:var(--text-dim);font-size:13px;">감지: {{ a.detected_at }}</p>
+    <a class="btn btn-ghost" href="{{ a.policy_snapshots.url }}" target="_blank">정책 페이지 열기</a>
+    {% if not a.reviewed %}
+    <form method="post" action="/policy-alerts/{{ a.id }}/review" style="margin-top:10px;">
+      <input type="text" name="note" placeholder="메모 (선택)" style="padding:8px;border-radius:8px;border:1px solid var(--border);">
+      <button class="btn btn-primary" type="submit">검토완료</button>
+    </form>
+    {% else %}
+      <p style="color:var(--success);">✅ 검토완료 {{ a.note and ("— " ~ a.note) or "" }}</p>
+    {% endif %}
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty-banner">알림이 없어요.</div>
+{% endif %}
+{% endblock %}

@@ -58,3 +58,29 @@ EDUCATION_FORBIDDEN_KEYWORDS = [
     "치료됩니다", "완치", "100% 예방", "완치됩니다", "예방됩니다",
     "질병을 낫게", "효과가 보장", "부작용 없이 치료", "즉시 완쾌",
 ]
+
+# --- Phase 4 ---
+
+YOUTUBE_CLIENT_ID = os.getenv("YOUTUBE_CLIENT_ID", "")
+YOUTUBE_CLIENT_SECRET = os.getenv("YOUTUBE_CLIENT_SECRET", "")
+YOUTUBE_REFRESH_TOKEN = os.getenv("YOUTUBE_REFRESH_TOKEN", "")
+
+STORAGE_BUCKET = os.getenv("STORAGE_BUCKET", "")
+
+# /api/policy-check/run 호출 인증용 — 외부 스케줄러(cron-job.org)가 헤더로 전달, 무단 트리거 방지.
+POLICY_CHECK_SECRET = os.getenv("POLICY_CHECK_SECRET", "")
+
+# 로그인 세션 쿠키 서명용.
+SESSION_SECRET = os.getenv("SESSION_SECRET", "")
+SESSION_COOKIE_NAME = "couparvi_session"
+SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7  # 7일
+
+# docs/03_interfaces.md 9번 — policy_snapshots 초기 시드 목록. 정확한 URL은 Phase 4
+# 착수 시 최신 링크로 재확인 후 반영한다(정책 페이지 경로는 종종 바뀐다).
+MONITORED_POLICIES = [
+    {"platform": "youtube", "policy_name": "커뮤니티 가이드라인", "url": "https://www.youtube.com/howyoutubeworks/policies/community-guidelines/"},
+    {"platform": "youtube", "policy_name": "광고 콘텐츠 정책", "url": "https://support.google.com/youtube/answer/154235"},
+    {"platform": "youtube", "policy_name": "변경되거나 합성된 콘텐츠 정책", "url": "https://support.google.com/youtube/answer/14328491"},
+    {"platform": "instagram", "policy_name": "커뮤니티 가이드라인", "url": "https://help.instagram.com/477434105621119"},
+    {"platform": "instagram", "policy_name": "브랜드 콘텐츠 정책", "url": "https://help.instagram.com/2028067040742191"},
+]

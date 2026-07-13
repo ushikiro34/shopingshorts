@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}couparvi{% endblock %}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  {% block body %}
+  <div class="topbar">
+    <span class="brand">couparvi</span>
+    {% if user %}
+      <a class="logout" href="/logout">{{ user.email }} · 로그아웃</a>
+    {% endif %}
+  </div>
+  {% if policy_alert_count and policy_alert_count > 0 %}
+  <div class="policy-banner">
+    <span>⚠️ 미검토 정책 변경 알림 {{ policy_alert_count }}건</span>
+    <a href="/policy-alerts">확인하러 가기</a>
+  </div>
+  {% endif %}
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
+  {% if toast %}
+  <div class="toast">{{ toast }}</div>
+  {% endif %}
+  {% endblock %}
+</body>
+</html>

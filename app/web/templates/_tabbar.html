@@ -1,0 +1,6 @@
+<div class="tabbar">
+  <a class="tab-pill{% if active == 'discover' %} active{% endif %}" href="/discover">발굴 <span class="badge">{{ counts.discover }}</span></a>
+  <a class="tab-pill{% if active == 'script' %} active{% endif %}" href="/scripts">대본작성 <span class="badge">{{ counts.script }}</span></a>
+  <a class="tab-pill{% if active == 'media' %} active{% endif %}" href="/media">미디어제작 <span class="badge">{{ counts.media }}</span></a>
+  <a class="tab-pill{% if active == 'publish' %} active{% endif %}" href="/publish">게시검토 <span class="badge">{{ counts.publish }}</span></a>
+</div>

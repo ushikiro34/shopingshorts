@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}대본작성 · couparvi{% endblock %}
+{% block content %}
+{% include "_tabbar.html" %}
+
+<div class="three-col" data-view="{{ view }}">
+  <div class="panel list-panel">
+    {% if products %}
+      {% for p in products %}
+      <a class="list-item{% if selected and selected.id == p.id %} selected{% endif %}" href="/scripts?selected={{ p.id }}&view=detail">
+        {{ p.product_name or "(이름 미입력)" }}
+      </a>
+      {% endfor %}
+    {% else %}
+      <div class="empty-banner">아직 이 단계로 넘어온 상품이 없어요.<br><a class="btn btn-ghost" href="/discover" style="margin-top:8px;">이전 탭으로</a></div>
+    {% endif %}
+  </div>
+
+  <div class="panel center-panel">
+    <a class="back-to-list" href="/scripts">← 목록</a>
+    {% if not selected %}
+      <div class="empty-banner">왼쪽 목록에서 상품을 선택해주세요.</div>
+    {% elif not script %}
+      <h2 style="margin-top:0;">{{ selected.product_name }}</h2>
+      <p style="color:var(--text-dim);">아직 생성된 대본이 없어요. 오른쪽에서 톤을 골라 대본을 만들어보세요.</p>
+    {% else %}
+      <h2 style="margin-top:0;">{{ selected.product_name }} <span class="pill pill-accent">{{ script.tone }}</span></h2>
+
+      {% if script.script_json.educational_note and script.script_json.educational_note.included %}
+      <div class="edu-card">
+        <strong>ℹ️ 사실설명</strong>
+        <p style="margin:6px 0 0;">{{ script.script_json.educational_note.text }}</p>
+      </div>
+      {% endif %}
+
+      <div class="card-field">
+        <label>공감</label>
+        <p>{{ script.script_json.structure.empathy }}</p>
+      </div>
+      <div class="card-field">
+        <label>감정</label>
+        <p>{{ script.script_json.structure.emotion }}</p>
+      </div>
+      <div class="card-field">
+        <label>문제제기</label>
+        <p>{{ script.script_json.structure.problem }}</p>
+      </div>
+      <div class="card-field">
+        <label>해결</label>
+        <p>{{ script.script_json.structure.solution }}</p>
+      </div>
+      <div class="card-field">
+        <label>상품</label>
+        <p>{{ script.script_json.structure.product }}</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="panel action-panel">
+    {% if selected %}
+      <form method="post" action="/scripts/{{ selected.id }}/generate">
+        <div class="card-field">
+          <label>톤 선택</label>
+          <select name="tone" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);">
+            {% for t in tones %}
+            <option value="{{ t }}" {% if script and script.tone == t %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <button class="btn btn-ghost" type="submit">{% if script %}다른 톤으로 재생성{% else %}대본 생성{% endif %}</button>
+      </form>
+      {% if script %}
+      <form method="post" action="/scripts/{{ script.id }}/approve">
+        <input type="hidden" name="product_id" value="{{ selected.id }}">
+        <button class="btn btn-primary" type="submit">승인하고 다음으로</button>
+      </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

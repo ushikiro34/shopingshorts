@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}홈 · couparvi{% endblock %}
+{% block content %}
+<div class="hello">안녕하세요, 오늘도 화이팅이에요 ✨</div>
+<div class="hello-sub">오늘 목표 {{ daily_goal }}편 중 {{ uploaded_today }}편 게시완료</div>
+
+<div class="summary-grid">
+  <a class="summary-card{% if counts.discover > 0 %}{% endif %}" href="/discover">
+    <div class="num">{{ counts.discover }}</div>
+    <div class="label">발굴대기</div>
+  </a>
+  <a class="summary-card" href="/scripts">
+    <div class="num">{{ counts.script }}</div>
+    <div class="label">대본검수</div>
+  </a>
+  <a class="summary-card" href="/media">
+    <div class="num">{{ counts.media }}</div>
+    <div class="label">제작중</div>
+  </a>
+  <a class="summary-card{% if counts.publish > 0 %} warning{% endif %}" href="/publish">
+    <div class="num">{{ counts.publish }}</div>
+    <div class="label">게시대기</div>
+  </a>
+</div>
+
+<div class="tabbar">
+  <a class="tab-pill" href="/discover">발굴 <span class="badge">{{ counts.discover }}</span></a>
+  <a class="tab-pill" href="/scripts">대본작성 <span class="badge">{{ counts.script }}</span></a>
+  <a class="tab-pill" href="/media">미디어제작 <span class="badge">{{ counts.media }}</span></a>
+  <a class="tab-pill" href="/publish">게시검토 <span class="badge">{{ counts.publish }}</span></a>
+</div>
+{% endblock %}
