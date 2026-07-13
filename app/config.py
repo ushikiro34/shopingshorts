@@ -33,6 +33,14 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
 
+# TTS 공급자 선택 — "elevenlabs" | "edge". ElevenLabs 무료 플랜은 라이브러리 보이스를
+# API로 못 쓰는 제약이 있어(docs/01_plan.md 2026-07-13 이력 참조), 기본값은 키 없이도
+# 바로 쓸 수 있는 edge-tts(Microsoft Edge 읽어주기 기능의 비공식 클라이언트)로 둔다.
+# edge-tts는 공식 API가 아니므로 Suno와 동일한 리스크(공지 없는 차단 가능성)가 있다는
+# 점을 인지하고 쓴다 — 다만 TTS는 쿠팡 계정 정지 같은 치명적 리스크와는 무관하다.
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "edge")
+EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "ko-KR-SunHiNeural")
+
 # 상품 스코어링 — docs/00_project_overview.md의 "충동구매 가능성" 임계값.
 IMPULSE_PRICE_THRESHOLD = 30000
 

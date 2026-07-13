@@ -210,7 +210,9 @@ Claude가 reviews_raw를 입력받아 생성. **원문을 그대로 옮기지 �
 | `COUPANG_ACCESS_KEY` / `COUPANG_SECRET_KEY` | 파트너스 API |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` | DB/Storage |
 | `ANTHROPIC_API_KEY` | 후기 분석, 대본 생성 |
-| `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` | TTS |
+| `TTS_PROVIDER` | (v2.2) `elevenlabs` \| `edge`. 기본값 `edge` — ElevenLabs 무료 플랜은 라이브러리 보이스를 API로 못 씀(2026-07-13 확인, `01_plan.md` 참조). edge-tts는 키 불필요 |
+| `ELEVENLABS_API_KEY` / `ELEVENLABS_VOICE_ID` | TTS (`TTS_PROVIDER=elevenlabs`일 때만 사용) |
+| `EDGE_TTS_VOICE` | TTS (`TTS_PROVIDER=edge`일 때 보이스 이름, 기본값 `ko-KR-SunHiNeural`) |
 | `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` / `YOUTUBE_REFRESH_TOKEN` | 업로드 (Phase 4) |
 | `DEFAULT_HOLD_MINUTES` | 게시 전 냉각기간 기본값(분). 경과해야 `/publish` 버튼이 활성화됨 (기본 240) |
 | `STORAGE_BUCKET` | 완성 영상/썸네일 버킷 |

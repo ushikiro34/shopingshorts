@@ -10,7 +10,8 @@
 - Supabase 프로젝트 (Postgres)
 - 쿠팡 파트너스 API 액세스키/시크릿키 (없으면 `/api/products/manual` 임시 경로 사용 가능)
 - Anthropic API 키 (Phase 2 — 후기 분석/대본 생성)
-- ElevenLabs API 키 (Phase 3 — TTS. 없으면 렌더링 자체는 되지만 무음 오디오로만 테스트 가능)
+- TTS (Phase 3): 기본값은 `edge-tts`(키 불필요, `pip install`만 하면 바로 동작). ElevenLabs를
+  쓰려면 `TTS_PROVIDER=elevenlabs` + API 키 필요(단 무료 플랜은 라이브러리 보이스가 API로 막혀있음)
 - FFmpeg (`ffmpeg`, `ffprobe`가 PATH에 있어야 함, Phase 3 렌더링)
 - 한글 폰트: 로컬 개발 시 Windows 시스템 폰트(malgun.ttf)를 자동으로 찾는다. 배포(Linux)
   환경에서는 `assets/fonts/NanumGothic.ttf` 등을 직접 채워 넣어야 한다(`app/media/render.py`의
@@ -101,7 +102,7 @@ pytest tests/ -v
 - `tests/test_script_validator.py`: 대본 스키마/원문유출/educational_note 규칙 검증 (API 키 불필요)
 - `tests/test_review_script_generation.py`: analyzer/generator의 JSON 파싱·재시도 로직을 가짜(fake) Anthropic 클라이언트로 검증 (API 키 불필요)
 - `tests/test_media_images.py`, `test_media_graphics.py`: 이미지 캔버스 합성·2D 그래픽 생성 검증 (합성 이미지, 네트워크/API 키 불필요)
-- `tests/test_media_tts.py`: TTS 파싱·재시도 로직을 가짜 client로 검증 + ffprobe 실측(ffmpeg 필요, API 키 불필요)
+- `tests/test_media_tts.py`: ElevenLabs/edge-tts 양쪽 경로의 재시도 로직을 가짜 client/factory로 검증 + 실제 edge-tts 네트워크 호출 1건(키 불필요) + ffprobe 실측(ffmpeg 필요)
 - `tests/test_media_render.py`: ffmpeg 명령/필터 문자열 조립 로직 검증 (ffmpeg 실행 불필요)
 - `tests/test_media_render_integration.py`: 실제 ffmpeg로 2-scene 영상을 끝까지 조립해 해상도/코덱/길이 검증 (ffmpeg 필요, `ffmpeg`가 없으면 자동 skip)
 

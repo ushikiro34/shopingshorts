@@ -16,7 +16,7 @@
 **포함**
 1. `app/media/images.py` — products.image_urls 다운로드 → 1080×1920 캔버스 배치(블러 확대 배경 채움), 자막 안전영역 확보
 2. `app/media/graphics.py` — **C안의 2D 그래픽 레이어**: 배경 그라디언트, 아이콘(카테고리별 프리셋), 강조 카드, educational_note용 간단 다이어그램 템플릿. 벡터/도형 기반으로 생성(AI 이미지 생성 API 사용 안 함)
-3. `app/media/tts.py` — ElevenLabs, scene별 mp3 + 실제 길이 측정 (렌더링 타이밍 기준은 duration_sec이 아니라 TTS 실측)
+3. `app/media/tts.py` — scene별 mp3 + 실제 길이 측정 (렌더링 타이밍 기준은 duration_sec이 아니라 TTS 실측). **TTS 공급자는 `TTS_PROVIDER` 환경변수로 선택**(v2.2): 기본값 `edge`(Microsoft Edge 읽어주기 기능의 비공식 클라이언트, `edge-tts` 패키지, 키 불필요) 또는 `elevenlabs`(공식 API, 단 무료 플랜은 라이브러리 보이스를 API로 못 씀 — `docs/01_plan.md` 2026-07-13 이력 참조). edge-tts는 공식 API가 아니라는 점에서 Suno 배제 사유와 같은 종류의 리스크(공지 없는 차단 가능성)가 있지만, TTS 실패는 쿠팡 계정 정지 같은 치명적 리스크와 무관해 완전 배제하지는 않고 기본값으로 채택했다.
 4. `app/media/render.py` — FFmpeg 조립: 실사 상품 이미지 + 2D 그래픽 레이어 합성 + Ken Burns 줌 + TTS + 자막 번인(한글 폰트 임베드) + **BGM(`assets/bgm/` 풀에서 무작위 선택, -18dB 덕킹)** + 마지막 scene 고지 오버레이. 출력 h264/1080×1920/30fps. (구현 시 확인: 고지문구는 narration에는 절대 넣지 않고 화면 오버레이로만 표시한다 — docs/00_project_overview.md v2.2 "고지문구 위치"와 동일한 원칙. 텍스트는 줄마다 별도 drawtext 노드로 그리고 실제 폰트 폭을 측정해 자동 줄바꿈한다 — ffmpeg drawtext에 개행 문자를 통째로 넘기면 tofu 글리프가 그려지는 버그가 있었다.)
 5. `app/media/worker.py` — render_jobs 폴링 워커 (queued→generating_images→generating_audio→assembling→done/failed)
 6. 엔드포인트: `POST /api/scripts/{id}/approve`(enqueue), `GET /api/render-jobs/{id}`
