@@ -30,6 +30,9 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
+
 # 상품 스코어링 — docs/00_project_overview.md의 "충동구매 가능성" 임계값.
 IMPULSE_PRICE_THRESHOLD = 30000
 

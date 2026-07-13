@@ -1,0 +1,94 @@
+"""실제 ffmpeg/ffprobe로 2-scene 영상을 끝까지 조립해 규격을 검증한다.
+
+ElevenLabs API 키가 없어 실제 TTS 대신 ffmpeg의 무음(anullsrc) 클립을 오디오로 쓴다 —
+Ken Burns/자막 번인/규격(해상도·코덱·fps)·고지 오버레이 타이밍은 오디오 출처와 무관하게
+동일한 파이프라인을 타므로 이 부분의 검증에는 지장이 없다. 실제 TTS 연동 자체는
+tests/test_media_tts.py에서 fake client로 별도 검증한다.
+"""
+
+import json
+import subprocess
+
+import pytest
+
+from app.media.graphics import compose_educational_note_scene
+from app.media.images import compose_scene_image, save_jpeg
+from app.media.render import concat_clips, mix_bgm, render_scene_clip
+from PIL import Image
+
+FFMPEG_AVAILABLE = subprocess.run(["ffmpeg", "-version"], capture_output=True).returncode == 0
+
+
+def _make_silence(path: str, duration_sec: float) -> str:
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=22050:cl=mono",
+            "-t", str(duration_sec), path,
+        ],
+        capture_output=True,
+        check=True,
+    )
+    return path
+
+
+def _ffprobe_json(path: str) -> dict:
+    result = subprocess.run(
+        [
+            "ffprobe", "-v", "quiet", "-print_format", "json",
+            "-show_format", "-show_streams", path,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return json.loads(result.stdout)
+
+
+@pytest.mark.skipif(not FFMPEG_AVAILABLE, reason="ffmpeg not available in this environment")
+def test_full_two_scene_render_matches_spec(tmp_path):
+    work_dir = str(tmp_path)
+
+    scene1_img = compose_scene_image(_synthetic_jpeg_bytes((255, 120, 80)))
+    scene1_path = save_jpeg(scene1_img, f"{work_dir}/scene1.jpg")
+
+    scene2_img = compose_educational_note_scene((1080, 1920), category="자외선차단제")
+    scene2_path = save_jpeg(scene2_img, f"{work_dir}/scene2.jpg")
+
+    audio1 = _make_silence(f"{work_dir}/audio1.wav", 2.0)
+    audio2 = _make_silence(f"{work_dir}/audio2.wav", 3.0)
+
+    clip1 = render_scene_clip(
+        scene1_path, audio1, 2.0, "요즘 자꾸 새벽에 깨시나요?", f"{work_dir}/clip1.mp4", work_dir,
+    )
+    clip2 = render_scene_clip(
+        scene2_path, audio2, 3.0, "제품정보는 본문에 있어요, 확인해보세요.",
+        f"{work_dir}/clip2.mp4", work_dir,
+        disclosure_text="이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.",
+    )
+
+    concatenated = concat_clips(
+        [clip1, clip2], f"{work_dir}/list.txt", f"{work_dir}/concatenated.mp4"
+    )
+    final_path = mix_bgm(concatenated, None, f"{work_dir}/final.mp4")
+
+    probe = _ffprobe_json(final_path)
+    video_stream = next(s for s in probe["streams"] if s["codec_type"] == "video")
+    audio_stream = next(s for s in probe["streams"] if s["codec_type"] == "audio")
+
+    assert video_stream["width"] == 1080
+    assert video_stream["height"] == 1920
+    assert video_stream["codec_name"] == "h264"
+    assert video_stream["pix_fmt"] == "yuv420p"
+    assert audio_stream is not None
+
+    total_duration = float(probe["format"]["duration"])
+    assert 4.7 <= total_duration <= 5.3  # 2s + 3s 씬 합계 ±0.3
+
+
+def _synthetic_jpeg_bytes(color) -> bytes:
+    from io import BytesIO
+
+    img = Image.new("RGB", (1200, 900), color)
+    buf = BytesIO()
+    img.save(buf, "JPEG")
+    return buf.getvalue()
