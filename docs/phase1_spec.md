@@ -13,6 +13,7 @@
 4. `app/config.py`의 `EDUCATION_TRIGGER_KEYWORDS`(interfaces.md 8번 참조) 매칭 로직 — discover 시 category+product_name에 키워드가 있으면 `needs_education=true` 자동 설정
 5. 엔드포인트: `POST /api/products/discover`, `GET /api/products?min_score=`(대시보드 기본값 80), `POST /api/products/{id}/reviews`, `PATCH /api/products/{id}/needs-education`(사람이 수동 토글)
 6. `.env.example`, `requirements.txt`, `README.md`
+7. (v2.2, 파트너스 API 키 미발급 기간 임시 경로 — overview.md "파트너스 API 키 미발급 기간의 임시 소싱 방식" 참조) `POST /api/products/manual`(API 호출 없이 수동 입력으로 상품 등록), `PATCH /api/products/{id}/deeplink`(수동 생성한 딥링크 등록)
 
 **제외**: 후기 분석(AI), 대본, 미디어, 크롤링(절대 금지)
 

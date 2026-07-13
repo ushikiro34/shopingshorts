@@ -11,4 +11,10 @@
 - [ ] 8. 코드베이스에 쿠팡 페이지 크롤링(Selenium/requests로 HTML 파싱) 코드가 없다
 - [ ] 9. API 키 하드코딩 없음 (git grep)
 
+## 수동 소싱 경로 (v2.2, 파트너스 API 키 미발급 기간 임시 경로)
+- [ ] 10. `POST /api/products/manual`이 쿠팡 API를 호출하지 않고 사람이 입력한 값(product_name/price/category/image_urls/review_count)만으로 상품을 등록하고 점수를 계산한다 (`discover`와 동일한 status/점수 체계)
+- [ ] 11. `PATCH /api/products/{id}/deeplink`로 딥링크를 등록/수정할 수 있다
+- [ ] 12. `product_name` 없이 `POST /api/products/manual` 호출 시 명확한 422 에러 (pydantic 검증, `discover`의 기존 패턴과 동일)
+
 전 항목 통과 → 통과, plan.md 기록. 실패 시 항목별 사유+재현방법 기록.
+(9번까지는 실제 파트너스 키가 있어야 완전히 재현 가능 — 키 미발급 기간에는 10~12번만으로 이 임시 경로의 판정을 별도 진행할 수 있다.)

@@ -182,7 +182,9 @@ Claude가 reviews_raw를 입력받아 생성. **원문을 그대로 옮기지 �
 
 | Method | Path | 설명 | Phase |
 |---|---|---|---|
-| POST | `/api/products/discover` | body: `{coupang_url}` 또는 `{keyword}`. 상품정보+점수 계산 → `scored` | 1 |
+| POST | `/api/products/discover` | body: `{coupang_url}` 또는 `{keyword}`. 쿠팡 파트너스 API로 상품정보+점수 계산 → `scored` | 1 |
+| POST | `/api/products/manual` | (v2.2, 파트너스 API 키 미발급 시 임시 경로) body: `{product_name, price?, category?, image_urls?, coupang_url?, review_count?}`. API 호출 없이 사람이 직접 입력한 값으로 상품 등록+점수 계산 → `scored`. `deeplink`는 비워둔 채 생성되며 이후 `/deeplink`로 채운다 | 1 |
+| PATCH | `/api/products/{id}/deeplink` | (v2.2) body: `{deeplink}`. 쿠팡 파트너스 웹사이트에서 사람이 수동 생성한 딥링크를 등록/수정 | 1 |
 | GET | `/api/products?min_score=70` | 추천 후보 목록 | 1 |
 | POST | `/api/products/{id}/reviews` | 리뷰 원문+별점 저장 → `reviews_collected` | 1 |
 | POST | `/api/products/{id}/analyze-reviews` | Claude 분석 → `analyzed` | 2 |

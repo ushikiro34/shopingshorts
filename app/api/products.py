@@ -28,6 +28,23 @@ class DiscoverRequest(BaseModel):
         return self
 
 
+class ManualProductRequest(BaseModel):
+    """(v2.2) 쿠팡 파트너스 API 키 미발급 기간의 임시 소싱 경로 — API 호출 없이 사람이 입력한 값으로 등록한다."""
+
+    product_name: str
+    price: int | None = None
+    category: str | None = None
+    image_urls: list[str] = []
+    coupang_url: str | None = None
+    review_count: int | None = None
+
+    @model_validator(mode="after")
+    def _product_name_required(self) -> "ManualProductRequest":
+        if not self.product_name.strip():
+            raise ValueError("product_name은 비어있을 수 없습니다.")
+        return self
+
+
 class ReviewInput(BaseModel):
     reviews_raw: str
     rating_summary: str | None = None
@@ -35,6 +52,10 @@ class ReviewInput(BaseModel):
 
 class NeedsEducationPatch(BaseModel):
     needs_education: bool
+
+
+class DeeplinkPatch(BaseModel):
+    deeplink: str
 
 
 class GenerateScriptRequest(BaseModel):
@@ -112,6 +133,35 @@ def discover_product(payload: DiscoverRequest):
     return result.data[0]
 
 
+@router.post("/products/manual", status_code=201)
+def register_product_manually(payload: ManualProductRequest):
+    """(v2.2) 쿠팡 파트너스 API를 호출하지 않고 사람이 입력한 값만으로 상품을 등록한다.
+
+    딥링크는 비워둔 채 생성되며, 사람이 파트너스 웹사이트에서 수동 생성한 뒤
+    PATCH /api/products/{id}/deeplink로 등록한다.
+    """
+    client = get_client()
+
+    needs_education = detect_needs_education(payload.category, payload.product_name)
+    breakdown = calculate_score(ScoreInputs(review_count=payload.review_count, price=payload.price))
+
+    row = {
+        "coupang_url": payload.coupang_url,
+        "product_name": payload.product_name,
+        "price": payload.price,
+        "image_urls": payload.image_urls,
+        "deeplink": None,
+        "category": payload.category,
+        "review_count": payload.review_count,
+        "needs_education": needs_education,
+        "status": "scored",
+        **breakdown.as_dict(),
+    }
+
+    result = client.table("products").insert(row).execute()
+    return result.data[0]
+
+
 @router.get("/products")
 def list_products(min_score: int = DEFAULT_MIN_SCORE):
     result = (
@@ -166,6 +216,20 @@ def update_needs_education(product_id: str, payload: NeedsEducationPatch):
     result = (
         client.table("products")
         .update({"needs_education": payload.needs_education})
+        .eq("id", product_id)
+        .execute()
+    )
+    return result.data[0]
+
+
+@router.patch("/products/{product_id}/deeplink")
+def update_deeplink(product_id: str, payload: DeeplinkPatch):
+    """(v2.2) 사람이 파트너스 웹사이트에서 수동 생성한 딥링크를 등록/수정한다."""
+    client = get_client()
+    get_product_or_404(client, product_id)
+    result = (
+        client.table("products")
+        .update({"deeplink": payload.deeplink})
         .eq("id", product_id)
         .execute()
     )
