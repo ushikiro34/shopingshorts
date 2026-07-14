@@ -15,7 +15,20 @@ from fastapi.templating import Jinja2Templates
 from app.config import DEFAULT_HOLD_MINUTES, PARTNERS_DISCLOSURE, SCRIPT_TONES
 from app.db import get_client
 from app.discovery.education import detect_needs_education
-from app.discovery.scoring import MAX_TOTAL_SCORE, ScoreInputs, calculate_score, score_story
+from app.discovery.scoring import (
+    MAX_CONTENT_FIT_SCORE,
+    MAX_IMPULSE_SCORE,
+    MAX_PRICE_SCORE,
+    MAX_REVIEW_COUNT_SCORE,
+    MAX_REVIEW_GROWTH_SCORE,
+    MAX_SEASONALITY_SCORE,
+    MAX_STORY_SCORE,
+    MAX_TOTAL_SCORE,
+    ScoreInputs,
+    calculate_score,
+    score_review_count,
+    score_story,
+)
 from app.discovery.story_heuristic import count_emotional_keywords
 from app.media.images import ImageFetchError, download_image
 from app.media.thumbnail import generate_thumbnail
@@ -65,6 +78,36 @@ def _counts(client) -> dict:
         "media": _count(MEDIA_STATUSES),
         "publish": len(client.table("upload_queue").select("id").in_("status", ["pending_review", "ready_to_publish"]).execute().data),
     }
+
+
+def _score_tier(score: int, max_score: int) -> str:
+    """점수 grid 셀 배경색 구간 — 0점은 zero(중립), 나머지는 만점 대비 비율로 low/mid/high."""
+    if not score:
+        return "zero"
+    ratio = score / max_score
+    if ratio <= 0.33:
+        return "low"
+    if ratio <= 0.66:
+        return "mid"
+    return "high"
+
+
+def _build_score_cells(product: dict) -> list[dict]:
+    review_count = product.get("review_count") or 0
+    review_count_score = score_review_count(review_count)
+    fields = [
+        ("리뷰수", f"{review_count}건", review_count_score, MAX_REVIEW_COUNT_SCORE),
+        ("증가속도", str(product.get("review_growth_score") or 0), product.get("review_growth_score") or 0, MAX_REVIEW_GROWTH_SCORE),
+        ("가격", str(product.get("price_score") or 0), product.get("price_score") or 0, MAX_PRICE_SCORE),
+        ("충동구매", str(product.get("impulse_score") or 0), product.get("impulse_score") or 0, MAX_IMPULSE_SCORE),
+        ("계절성", str(product.get("seasonality_score") or 0), product.get("seasonality_score") or 0, MAX_SEASONALITY_SCORE),
+        ("소재적합", str(product.get("content_fit_score") or 0), product.get("content_fit_score") or 0, MAX_CONTENT_FIT_SCORE),
+        ("스토리", str(product.get("story_score") or 0), product.get("story_score") or 0, MAX_STORY_SCORE),
+    ]
+    return [
+        {"label": label, "display": display, "tier": _score_tier(score, max_score)}
+        for label, display, score, max_score in fields
+    ]
 
 
 _DELETE_REDIRECT_TABS = {"discover", "scripts", "media"}
@@ -154,6 +197,7 @@ def discover_tab(request: Request, selected: str | None = None, view: str = "lis
             "counts": _counts(client),
             "products": products,
             "selected": selected_product,
+            "score_cells": _build_score_cells(selected_product) if selected_product else [],
             "view": view if selected_product else "list",
         }
     )
@@ -171,7 +215,7 @@ def discover_new(request: Request, mode: str = Form(...), value: str = Form(...)
         except CoupangPartnersError:
             results = []
         if not results:
-            return RedirectResponse("/discover?toast=" + "발굴 실패 (쿠팡 API 확인 필요)", status_code=302)
+            return RedirectResponse("/discover?toast=" + "상품검색 실패 (쿠팡 API 확인 필요)", status_code=302)
         top = results[0]
         needs_education = detect_needs_education(top.category_name, top.product_name)
         breakdown = calculate_score(ScoreInputs(review_count=top.rating_count, price=top.product_price))
@@ -210,6 +254,8 @@ def discover_analyze(
     reviews_raw: str = Form(...),
     rating_summary: str = Form(""),
     needs_education: str = Form(None),
+    deeplink: str = Form(""),
+    next: str = Form("false"),
 ):
     client = get_client()
     product = client.table("products").select("*").eq("id", product_id).execute().data[0]
@@ -224,14 +270,15 @@ def discover_analyze(
     old_total_score = product.get("total_score") or 0
     new_total_score = min(old_total_score - old_story_score + new_story_score, MAX_TOTAL_SCORE)
 
-    client.table("products").update(
-        {
-            "story_score": new_story_score,
-            "total_score": new_total_score,
-            "needs_education": needs_education == "on",
-            "status": "reviews_collected",
-        }
-    ).eq("id", product_id).execute()
+    update_row = {
+        "story_score": new_story_score,
+        "total_score": new_total_score,
+        "needs_education": needs_education == "on",
+        "status": "reviews_collected",
+    }
+    if deeplink.strip():
+        update_row["deeplink"] = deeplink.strip()
+    client.table("products").update(update_row).eq("id", product_id).execute()
 
     try:
         analysis_json = analyze_reviews(reviews_raw)
@@ -241,9 +288,10 @@ def discover_analyze(
     except ReviewAnalysisError:
         return RedirectResponse(f"/discover?selected={product_id}&view=detail&toast=후기+분석에+실패했어요", status_code=302)
 
-    # 04_ui_spec.md: "완료하고 다음으로"는 다음 탭으로 강제 이동하지 않는다 — 토스트만 안내하고
-    # 현재(발굴) 탭에 머문다. 상태가 바뀐 상품은 이 탭 큐에서 자연히 사라진다.
-    return RedirectResponse("/discover?toast=완료!+대본작성+탭에서+확인할+수+있어요", status_code=302)
+    # "분석 및 다음"(next=true)만 대본작성 탭으로 이동한다. "분석하기"는 발굴 탭에 머문다.
+    if next == "true":
+        return RedirectResponse("/scripts?toast=분석+완료!+대본작성을+시작해보세요", status_code=302)
+    return RedirectResponse(f"/discover?selected={product_id}&view=detail&toast=분석+완료!", status_code=302)
 
 
 # --- 대본작성 탭 ---

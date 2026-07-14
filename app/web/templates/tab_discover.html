@@ -1,28 +1,31 @@
 {% extends "base.html" %}
 {% from "_macros.html" import list_row %}
-{% block title %}발굴 · couparvi{% endblock %}
-{% block body_top %}{% include "_tabbar.html" %}{% endblock %}
+{% block title %}상품선택 · couparvi{% endblock %}
+{% block body_top %}
+{% include "_tabbar.html" %}
+<form method="post" action="/discover/new" class="search-inline-form" id="discover-search-form">
+  <input type="text" name="value" placeholder="키워드 또는 상품명" required>
+  <select name="mode">
+    <option value="keyword">키워드로 검색 (쿠팡 API)</option>
+    <option value="manual">상품명 직접 입력 (수동)</option>
+  </select>
+  <button class="btn btn-primary" type="submit" id="discover-search-btn">
+    <span class="btn-label">상품검색</span>
+    <span class="btn-spinner" hidden></span>
+  </button>
+</form>
+<script>
+  document.getElementById("discover-search-form").addEventListener("submit", function () {
+    var btn = document.getElementById("discover-search-btn");
+    btn.disabled = true;
+    btn.querySelector(".btn-label").textContent = "검색하는 중...";
+    btn.querySelector(".btn-spinner").hidden = false;
+  });
+</script>
+{% endblock %}
 {% block content %}
 <div class="three-col" data-view="{{ view }}">
   <div class="panel list-panel">
-    <details style="margin-bottom:12px;">
-      <summary class="btn btn-ghost" style="cursor:pointer;">+ 새로 발굴하기</summary>
-      <form method="post" action="/discover/new" style="margin-top:10px;">
-        <div class="card-field">
-          <label>방식</label>
-          <select name="mode" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);">
-            <option value="keyword">키워드로 검색 (쿠팡 API)</option>
-            <option value="manual">상품명 직접 입력 (수동)</option>
-          </select>
-        </div>
-        <div class="card-field">
-          <label>키워드 또는 상품명</label>
-          <input type="text" name="value" required>
-        </div>
-        <button class="btn btn-primary" type="submit">발굴하기</button>
-      </form>
-    </details>
-
     {% if products %}
       {% for p in products %}
       {% call list_row(
@@ -31,7 +34,7 @@
         delete_action="/products/" ~ p.id ~ "/delete",
         redirect_to="discover"
       ) %}
-        {{ p.product_name or "(이름 미입력)" }}
+        <span class="list-item-title">{{ p.product_name or "(이름 미입력)" }}</span>
         <span class="score-badge">{{ p.total_score or 0 }}점</span>
       {% endcall %}
       {% endfor %}
@@ -44,22 +47,60 @@
     <a class="back-to-list" href="/discover">← 목록</a>
     {% if selected %}
     <form id="analyze-form" method="post" action="/discover/{{ selected.id }}/analyze">
-      <h2 style="margin-top:0;">{{ selected.product_name or "(이름 미입력)" }}</h2>
-      <p style="color:var(--text-dim);">{{ selected.category or "카테고리 미입력" }} · {{ selected.price and (selected.price ~ "원") or "가격 미입력" }}</p>
-
-      <div class="card-field">
-        <label>점수 breakdown</label>
-        <p style="font-size:13px;color:var(--text-dim);">
-          리뷰수 {{ selected.review_count or 0 }}건 · 증가속도 {{ selected.review_growth_score or 0 }} ·
-          가격 {{ selected.price_score or 0 }} · 충동구매 {{ selected.impulse_score or 0 }} ·
-          계절성 {{ selected.seasonality_score or 0 }} · 소재적합 {{ selected.content_fit_score or 0 }} ·
-          스토리 {{ selected.story_score or 0 }} → <strong>총 {{ selected.total_score or 0 }}점</strong>
-        </p>
+      <div class="detail-header">
+        <h2 class="detail-title">{{ selected.product_name or "(이름 미입력)" }}</h2>
+        <p class="detail-meta">{{ selected.category or "카테고리 미입력" }} · {{ selected.price and (selected.price ~ "원") or "가격 미입력" }}</p>
       </div>
 
+      <hr class="section-divider">
+
       <div class="card-field">
-        <label>리뷰 붙여넣기 (어느 마켓이든 괜찮아요)</label>
-        <textarea name="reviews_raw" rows="6" placeholder="상품 후기를 여기에 붙여넣어주세요" required></textarea>
+        <div class="section-label-row">
+          <label class="section-title">점수 breakdown</label>
+          <span class="info-icon" tabindex="0">?
+            <span class="info-tooltip score-tooltip">
+              <ul>
+                <li><strong>리뷰수</strong> — 리뷰가 많을수록 검증된 상품 (최대 20점)</li>
+                <li><strong>증가속도</strong> — 최근 30일 리뷰 비중으로 보는 요즘 인기 정도 (최대 20점)</li>
+                <li><strong>가격</strong> — 저렴할수록 가점, 충동구매 임계값 기준 (최대 10점)</li>
+                <li><strong>충동구매</strong> — 저가 + 생활 소모품이면 즉시 구매 가능성이 높음 (최대 15점)</li>
+                <li><strong>계절성</strong> — 지금 시즌과 잘 맞는 상품인지 (최대 10점)</li>
+                <li><strong>소재적합</strong> — 쇼츠 영상으로 시각적으로 보여줄 거리가 있는지 (최대 15점)</li>
+                <li><strong>스토리</strong> — 아래 후기에서 뽑은 공감 키워드 개수로 계산 (최대 10점)</li>
+              </ul>
+            </span>
+          </span>
+        </div>
+        <div class="score-grid">
+          {% for cell in score_cells %}
+          <div class="score-cell tier-{{ cell.tier }}">
+            <span class="score-cell-label">{{ cell.label }}</span>
+            <span class="score-cell-value">{{ cell.display }}</span>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="score-total-bar">
+          <span>총점</span>
+          <strong>{{ selected.total_score or 0 }}점</strong>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <div class="card-field">
+        <div class="section-label-row">
+          <label class="section-title">리뷰 붙여넣기 (어느 마켓이든 괜찮아요)</label>
+          <span class="info-icon" tabindex="0">?
+            <span class="info-tooltip">
+              후기를 붙여넣으면 AI가 공감 키워드를 뽑아 위 스토리 점수를 다시 계산하고, 대본에 녹여낼 핵심 감정 포인트도 찾아내요. 후기가 없으면 스토리 점수를 매길 수도, 대본을 만들 수도 없어서 필수 입력이에요.
+            </span>
+          </span>
+        </div>
+        <textarea name="reviews_raw" rows="10" class="fixed-textarea" placeholder="상품 후기를 여기에 붙여넣어주세요" required></textarea>
+      </div>
+      <div class="card-field">
+        <label>딥링크</label>
+        <input type="text" name="deeplink" value="{{ selected.deeplink or '' }}" placeholder="쿠팡 파트너스에서 생성한 딥링크 URL (수동 등록 상품은 직접 입력)">
       </div>
       <div class="card-field">
         <label>별점 요약 (선택)</label>
@@ -72,6 +113,30 @@
         </label>
       </div>
     </form>
+    <script>
+      document.getElementById("analyze-form").addEventListener("submit", function (e) {
+        var clicked = e.submitter;
+        // 제출 버튼(next=true/false)을 곧바로 disabled 처리하면 브라우저가 그 값을 폼 전송에서
+        // 빼버리므로, disabled 처리 전에 같은 값을 hidden input으로 미리 옮겨 담아 둔다.
+        if (clicked && clicked.name === "next") {
+          var hidden = document.createElement("input");
+          hidden.type = "hidden";
+          hidden.name = "next";
+          hidden.value = clicked.value;
+          e.target.appendChild(hidden);
+        }
+        ["analyze-only-btn", "analyze-next-btn"].forEach(function (id) {
+          var b = document.getElementById(id);
+          if (b) b.disabled = true;
+        });
+        if (clicked) {
+          var label = clicked.querySelector(".btn-label");
+          var spinner = clicked.querySelector(".btn-spinner");
+          if (label) label.textContent = clicked.dataset.loadingText || "처리하는 중...";
+          if (spinner) spinner.hidden = false;
+        }
+      });
+    </script>
     {% else %}
       <div class="empty-banner">왼쪽 목록에서 상품을 선택해주세요.</div>
     {% endif %}
@@ -79,7 +144,14 @@
 
   <div class="panel action-panel">
     {% if selected %}
-      <button class="btn btn-primary" type="submit" form="analyze-form">분석 시작하고 다음으로</button>
+      <button class="btn btn-ghost" type="submit" form="analyze-form" name="next" value="false" id="analyze-only-btn" data-loading-text="분석하는 중...">
+        <span class="btn-label">분석하기</span>
+        <span class="btn-spinner" hidden></span>
+      </button>
+      <button class="btn btn-primary" type="submit" form="analyze-form" name="next" value="true" id="analyze-next-btn" data-loading-text="분석하고 이동하는 중...">
+        <span class="btn-label">분석 및 다음</span>
+        <span class="btn-spinner" hidden></span>
+      </button>
     {% endif %}
   </div>
 </div>

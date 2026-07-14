@@ -13,7 +13,7 @@
         delete_action="/products/" ~ p.id ~ "/delete",
         redirect_to="scripts"
       ) %}
-        {{ p.product_name or "(이름 미입력)" }}
+        <span class="list-item-title">{{ p.product_name or "(이름 미입력)" }}</span>
       {% endcall %}
       {% endfor %}
     {% else %}

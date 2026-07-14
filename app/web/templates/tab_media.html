@@ -13,8 +13,8 @@
         delete_action="/products/" ~ p.id ~ "/delete",
         redirect_to="media"
       ) %}
-        {{ p.product_name or "(이름 미입력)" }}
-        <span class="pill {% if p.status == 'media_generated' or p.status == 'thumbnail_generated' %}pill-success{% else %}pill-accent{% endif %}" style="float:right;">
+        <span class="list-item-title">{{ p.product_name or "(이름 미입력)" }}</span>
+        <span class="pill {% if p.status == 'media_generated' or p.status == 'thumbnail_generated' %}pill-success{% else %}pill-accent{% endif %}">
           {% if p.status == 'script_approved' %}렌더링중{% elif p.status == 'media_generated' %}썸네일대기{% else %}완료{% endif %}
         </span>
       {% endcall %}

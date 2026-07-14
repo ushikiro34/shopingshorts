@@ -12,8 +12,8 @@
         selected=(selected and selected.id == i.id),
         delete_action="/publish/" ~ i.id ~ "/delete"
       ) %}
-        {{ i.youtube_title or "(제목 없음)" }}
-        <span class="pill {% if i.status == 'published' %}pill-success{% elif i.status == 'ready_to_publish' %}pill-danger{% else %}pill-gray{% endif %}" style="float:right;">
+        <span class="list-item-title">{{ i.youtube_title or "(제목 없음)" }}</span>
+        <span class="pill {% if i.status == 'published' %}pill-success{% elif i.status == 'ready_to_publish' %}pill-danger{% else %}pill-gray{% endif %}">
           {% if i.status == 'pending_review' %}냉각중{% elif i.status == 'ready_to_publish' %}게시가능{% else %}게시완료{% endif %}
         </span>
       {% endcall %}
