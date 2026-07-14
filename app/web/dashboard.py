@@ -67,6 +67,22 @@ def _counts(client) -> dict:
     }
 
 
+_DELETE_REDIRECT_TABS = {"discover", "scripts", "media"}
+
+
+@router.post("/products/{product_id}/delete")
+def delete_product(request: Request, product_id: str, redirect_to: str = Form("discover")):
+    """발굴/대본작성/미디어제작 탭 공용 — 리스트 행의 삭제 아이콘에서 호출된다.
+
+    products를 지우면 reviews/review_analysis/scripts/render_jobs 등은 FK cascade로 함께 삭제된다
+    (migrations의 on delete cascade). 되돌릴 수 없어 프론트에서 confirm() 확인을 거친다.
+    """
+    client = get_client()
+    client.table("products").delete().eq("id", product_id).execute()
+    target = redirect_to if redirect_to in _DELETE_REDIRECT_TABS else "discover"
+    return RedirectResponse(f"/{target}?toast=삭제했어요", status_code=302)
+
+
 # --- 로그인 ---
 
 
@@ -465,6 +481,14 @@ def publish_cancel(request: Request, upload_queue_id: str):
     client = get_client()
     client.table("upload_queue").update({"status": "canceled"}).eq("id", upload_queue_id).execute()
     return RedirectResponse("/publish?toast=취소했어요", status_code=302)
+
+
+@router.post("/publish/{upload_queue_id}/delete")
+def delete_upload_queue_item(request: Request, upload_queue_id: str):
+    """게시검토 탭 리스트 삭제 아이콘 — upload_queue 행 자체를 지운다(취소와 달리 목록에서 사라짐)."""
+    client = get_client()
+    client.table("upload_queue").delete().eq("id", upload_queue_id).execute()
+    return RedirectResponse("/publish?toast=삭제했어요", status_code=302)
 
 
 @router.post("/publish/{upload_queue_id}/publish")

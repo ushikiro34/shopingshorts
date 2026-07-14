@@ -1,0 +1,12 @@
+{% macro list_row(href, selected, delete_action, redirect_to=None) %}
+<div class="list-row{% if selected %} selected{% endif %}">
+  <a class="list-item-link" href="{{ href }}">
+    {{ caller() }}
+  </a>
+  <form class="list-delete-form" method="post" action="{{ delete_action }}"
+        onsubmit="return confirm('정말 삭제할까요? 되돌릴 수 없어요');">
+    {% if redirect_to %}<input type="hidden" name="redirect_to" value="{{ redirect_to }}">{% endif %}
+    <button type="submit" class="list-delete-btn" title="삭제" aria-label="삭제">✕</button>
+  </form>
+</div>
+{% endmacro %}

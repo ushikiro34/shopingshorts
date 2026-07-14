@@ -1,8 +1,8 @@
 {% extends "base.html" %}
+{% from "_macros.html" import list_row %}
 {% block title %}발굴 · couparvi{% endblock %}
+{% block body_top %}{% include "_tabbar.html" %}{% endblock %}
 {% block content %}
-{% include "_tabbar.html" %}
-
 <div class="three-col" data-view="{{ view }}">
   <div class="panel list-panel">
     <details style="margin-bottom:12px;">
@@ -25,10 +25,15 @@
 
     {% if products %}
       {% for p in products %}
-      <a class="list-item{% if selected and selected.id == p.id %} selected{% endif %}" href="/discover?selected={{ p.id }}&view=detail">
+      {% call list_row(
+        href="/discover?selected=" ~ p.id ~ "&view=detail",
+        selected=(selected and selected.id == p.id),
+        delete_action="/products/" ~ p.id ~ "/delete",
+        redirect_to="discover"
+      ) %}
         {{ p.product_name or "(이름 미입력)" }}
         <span class="score-badge">{{ p.total_score or 0 }}점</span>
-      </a>
+      {% endcall %}
       {% endfor %}
     {% else %}
       <div class="empty-banner">아직 발굴된 상품이 없어요.</div>

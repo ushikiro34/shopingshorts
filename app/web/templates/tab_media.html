@@ -1,18 +1,23 @@
 {% extends "base.html" %}
+{% from "_macros.html" import list_row %}
 {% block title %}미디어제작 · couparvi{% endblock %}
+{% block body_top %}{% include "_tabbar.html" %}{% endblock %}
 {% block content %}
-{% include "_tabbar.html" %}
-
 <div class="three-col" data-view="{{ view }}">
   <div class="panel list-panel">
     {% if products %}
       {% for p in products %}
-      <a class="list-item{% if selected and selected.id == p.id %} selected{% endif %}" href="/media?selected={{ p.id }}&view=detail">
+      {% call list_row(
+        href="/media?selected=" ~ p.id ~ "&view=detail",
+        selected=(selected and selected.id == p.id),
+        delete_action="/products/" ~ p.id ~ "/delete",
+        redirect_to="media"
+      ) %}
         {{ p.product_name or "(이름 미입력)" }}
         <span class="pill {% if p.status == 'media_generated' or p.status == 'thumbnail_generated' %}pill-success{% else %}pill-accent{% endif %}" style="float:right;">
           {% if p.status == 'script_approved' %}렌더링중{% elif p.status == 'media_generated' %}썸네일대기{% else %}완료{% endif %}
         </span>
-      </a>
+      {% endcall %}
       {% endfor %}
     {% else %}
       <div class="empty-banner">아직 이 단계로 넘어온 상품이 없어요.<br><a class="btn btn-ghost" href="/scripts" style="margin-top:8px;">이전 탭으로</a></div>

@@ -1,18 +1,22 @@
 {% extends "base.html" %}
+{% from "_macros.html" import list_row %}
 {% block title %}게시검토 · couparvi{% endblock %}
+{% block body_top %}{% include "_tabbar.html" %}{% endblock %}
 {% block content %}
-{% include "_tabbar.html" %}
-
 <div class="three-col" data-view="{{ view }}">
   <div class="panel list-panel">
     {% if items %}
       {% for i in items %}
-      <a class="list-item{% if selected and selected.id == i.id %} selected{% endif %}" href="/publish?selected={{ i.id }}&view=detail">
+      {% call list_row(
+        href="/publish?selected=" ~ i.id ~ "&view=detail",
+        selected=(selected and selected.id == i.id),
+        delete_action="/publish/" ~ i.id ~ "/delete"
+      ) %}
         {{ i.youtube_title or "(제목 없음)" }}
         <span class="pill {% if i.status == 'published' %}pill-success{% elif i.status == 'ready_to_publish' %}pill-danger{% else %}pill-gray{% endif %}" style="float:right;">
           {% if i.status == 'pending_review' %}냉각중{% elif i.status == 'ready_to_publish' %}게시가능{% else %}게시완료{% endif %}
         </span>
-      </a>
+      {% endcall %}
       {% endfor %}
     {% else %}
       <div class="empty-banner">아직 이 단계로 넘어온 상품이 없어요.<br><a class="btn btn-ghost" href="/media" style="margin-top:8px;">이전 탭으로</a></div>
