@@ -2,7 +2,6 @@
 {% from "_macros.html" import list_row %}
 {% block title %}상품선택 · couparvi{% endblock %}
 {% block body_top %}
-{% include "_tabbar.html" %}
 <form method="post" action="/discover/new" class="search-inline-form" id="discover-search-form">
   <input type="text" name="value" placeholder="키워드 또는 상품명" required>
   <select name="mode">
@@ -48,8 +47,37 @@
     {% if selected %}
     <form id="analyze-form" method="post" action="/discover/{{ selected.id }}/analyze">
       <div class="detail-header">
-        <h2 class="detail-title">{{ selected.product_name or "(이름 미입력)" }}</h2>
-        <p class="detail-meta">{{ selected.category or "카테고리 미입력" }} · {{ selected.price and (selected.price ~ "원") or "가격 미입력" }}</p>
+        <table class="detail-table">
+          <tbody>
+            <tr>
+              <th>상품명</th>
+              <td><h2 class="detail-title">{{ selected.product_name or "(이름 미입력)" }}</h2></td>
+            </tr>
+            <tr>
+              <th>카테고리</th>
+              <td>
+                <div class="detail-meta-row">
+                  <p class="detail-meta">{{ selected.category or "카테고리 미입력" }} · {{ selected.price and (selected.price ~ "원") or "가격 미입력" }}</p>
+                  {% if not selected.category %}
+                  <select name="category" class="category-select">
+                    <option value="">카테고리 선택</option>
+                    <option value="패션의류">패션의류</option>
+                    <option value="뷰티">뷰티</option>
+                    <option value="식품">식품</option>
+                    <option value="생활용품">생활용품</option>
+                    <option value="가전디지털">가전디지털</option>
+                    <option value="스포츠레저">스포츠레저</option>
+                    <option value="유아동">유아동</option>
+                    <option value="반려동물">반려동물</option>
+                    <option value="도서문구">도서문구</option>
+                    <option value="기타">기타</option>
+                  </select>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
 
       <hr class="section-divider">
@@ -96,9 +124,53 @@
             </span>
           </span>
         </div>
-        <textarea name="reviews_raw" rows="10" class="fixed-textarea" placeholder="상품 후기를 여기에 붙여넣어주세요" required></textarea>
+        <textarea name="reviews_raw" rows="10" class="fixed-textarea" placeholder="상품 후기를 여기에 붙여넣어주세요" required>{{ latest_review_raw }}</textarea>
       </div>
+      <script>
+        document.getElementById("review-screenshot-input").addEventListener("change", function (e) {
+          var file = e.target.files[0];
+          if (!file) return;
+          var btn = document.querySelector(".review-upload-btn");
+          var label = btn.querySelector(".btn-label");
+          var spinner = btn.querySelector(".btn-spinner");
+          var originalText = label.textContent;
+          btn.classList.add("btn-uploading");
+          label.textContent = "추출하는 중...";
+          spinner.hidden = false;
+
+          var formData = new FormData();
+          formData.append("file", file);
+          fetch("/discover/extract-review-image", { method: "POST", body: formData })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+              if (data.text) {
+                var ta = document.querySelector("textarea[name=reviews_raw]");
+                ta.value = ta.value ? (ta.value + "\n" + data.text) : data.text;
+              } else if (data.error) {
+                alert("텍스트 추출에 실패했어요: " + data.error);
+              } else {
+                alert("스크린샷에서 리뷰 텍스트를 찾지 못했어요.");
+              }
+            })
+            .catch(function () {
+              alert("텍스트 추출 중 오류가 발생했어요.");
+            })
+            .finally(function () {
+              label.textContent = originalText;
+              spinner.hidden = true;
+              btn.classList.remove("btn-uploading");
+              e.target.value = "";
+            });
+        });
+      </script>
       <div class="card-field">
+        <div class="review-upload-row">
+          <label class="btn btn-ghost review-upload-btn" for="review-screenshot-input">
+            <span class="btn-label">스크린샷에서 텍스트 추출</span>
+            <span class="btn-spinner" hidden></span>
+          </label>
+          <input type="file" id="review-screenshot-input" accept="image/*" hidden>
+        </div>
         <label>딥링크</label>
         <input type="text" name="deeplink" value="{{ selected.deeplink or '' }}" placeholder="쿠팡 파트너스에서 생성한 딥링크 URL (수동 등록 상품은 직접 입력)">
       </div>
@@ -142,17 +214,15 @@
     {% endif %}
   </div>
 
-  <div class="panel action-panel">
-    {% if selected %}
-      <button class="btn btn-ghost" type="submit" form="analyze-form" name="next" value="false" id="analyze-only-btn" data-loading-text="분석하는 중...">
-        <span class="btn-label">분석하기</span>
-        <span class="btn-spinner" hidden></span>
-      </button>
-      <button class="btn btn-primary" type="submit" form="analyze-form" name="next" value="true" id="analyze-next-btn" data-loading-text="분석하고 이동하는 중...">
-        <span class="btn-label">분석 및 다음</span>
-        <span class="btn-spinner" hidden></span>
-      </button>
-    {% endif %}
+  <div class="action-panel">
+    <button class="btn btn-ghost" type="submit" form="analyze-form" name="next" value="false" id="analyze-only-btn" data-loading-text="분석하는 중..." {% if not selected %}disabled{% endif %}>
+      <span class="btn-label">분석하기</span>
+      <span class="btn-spinner" hidden></span>
+    </button>
+    <button class="btn btn-primary" type="submit" form="analyze-form" name="next" value="true" id="analyze-next-btn" data-loading-text="분석하고 이동하는 중..." {% if not selected %}disabled{% endif %}>
+      <span class="btn-label">분석 및 다음</span>
+      <span class="btn-spinner" hidden></span>
+    </button>
   </div>
 </div>
 {% endblock %}

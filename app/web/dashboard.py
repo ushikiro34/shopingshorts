@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Form, Request, UploadFile, File
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import DEFAULT_HOLD_MINUTES, PARTNERS_DISCLOSURE, SCRIPT_TONES
@@ -33,6 +33,7 @@ from app.discovery.story_heuristic import count_emotional_keywords
 from app.media.images import ImageFetchError, download_image
 from app.media.thumbnail import generate_thumbnail
 from app.review.analyzer import ReviewAnalysisError, analyze_reviews
+from app.review.ocr import ReviewOcrError, extract_review_text
 from app.script.generator import ScriptGenerationError, generate_script
 from app.script.validator import ScriptValidationError, validate_script
 from app.upload.publisher import PublishError, publish_video
@@ -110,6 +111,74 @@ def _build_score_cells(product: dict) -> list[dict]:
     ]
 
 
+_STATUS_LABELS = {
+    "discovered": "발굴됨",
+    "scored": "점수산정",
+    "reviews_collected": "리뷰수집",
+    "analyzed": "분석완료",
+    "script_generated": "대본생성",
+    "script_approved": "대본승인",
+    "media_generated": "미디어제작",
+    "thumbnail_generated": "썸네일완료",
+    "queued_for_upload": "업로드대기",
+    "uploaded": "게시완료",
+}
+
+# 파이프라인 진행 순서 — 뒤로 갈수록 뱃지 색이 진해지는 단계 판정에 쓴다 (1~5).
+_STATUS_TIER = {
+    "discovered": 1,
+    "scored": 1,
+    "reviews_collected": 1,
+    "analyzed": 2,
+    "script_generated": 2,
+    "script_approved": 3,
+    "media_generated": 3,
+    "thumbnail_generated": 4,
+    "queued_for_upload": 4,
+    "uploaded": 5,
+}
+
+
+def _status_tab(status: str | None) -> str:
+    if status in DISCOVER_STATUSES:
+        return "discover"
+    if status in SCRIPT_STATUSES:
+        return "scripts"
+    if status in MEDIA_STATUSES:
+        return "media"
+    return "publish"
+
+
+def _recent_projects(client, limit: int = 6) -> list[dict]:
+    """대시보드 하단 '최근 프로젝트' 리스트 — 상품을 최근 생성순으로 보여준다."""
+    rows = (
+        client.table("products")
+        .select("id, product_name, category, status, total_score, image_urls, created_at")
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+        .data
+    )
+    projects = []
+    for r in rows:
+        status = r.get("status")
+        image_urls = r.get("image_urls") or []
+        projects.append(
+            {
+                "id": r["id"],
+                "name": r.get("product_name") or "(이름 미입력)",
+                "category": r.get("category") or "카테고리 미입력",
+                "status_label": _STATUS_LABELS.get(status, status or "-"),
+                "status_tier": _STATUS_TIER.get(status, 1),
+                "score": r.get("total_score") or 0,
+                "image_url": image_urls[0] if image_urls else None,
+                "tab": _status_tab(status),
+                "created_date": (r.get("created_at") or "")[:10],
+            }
+        )
+    return projects
+
+
 _DELETE_REDIRECT_TABS = {"discover", "scripts", "media"}
 
 
@@ -168,7 +237,17 @@ def home(request: Request):
         .execute()
         .data
     )
-    ctx.update({"counts": counts, "daily_goal": 3, "uploaded_today": uploaded_today})
+    now = datetime.now(timezone.utc)
+    ctx.update(
+        {
+            "active": "home",
+            "counts": counts,
+            "daily_goal": 3,
+            "uploaded_today": uploaded_today,
+            "today_label": f"{now.year}년 {now.month}월 {now.day}일",
+            "recent_projects": _recent_projects(client),
+        }
+    )
     return templates.TemplateResponse("home.html", ctx)
 
 
@@ -188,9 +267,22 @@ def discover_tab(request: Request, selected: str | None = None, view: str = "lis
         .data
     )
     selected_product = None
+    latest_review_raw = ""
     if selected:
         found = [p for p in products if p["id"] == selected]
         selected_product = found[0] if found else None
+        if selected_product:
+            latest_review = (
+                client.table("reviews")
+                .select("reviews_raw")
+                .eq("product_id", selected_product["id"])
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+                .data
+            )
+            if latest_review:
+                latest_review_raw = latest_review[0]["reviews_raw"] or ""
     ctx.update(
         {
             "active": "discover",
@@ -198,6 +290,7 @@ def discover_tab(request: Request, selected: str | None = None, view: str = "lis
             "products": products,
             "selected": selected_product,
             "score_cells": _build_score_cells(selected_product) if selected_product else [],
+            "latest_review_raw": latest_review_raw,
             "view": view if selected_product else "list",
         }
     )
@@ -242,9 +335,30 @@ def discover_new(request: Request, mode: str = Form(...), value: str = Form(...)
             "status": "scored",
             **breakdown.as_dict(),
         }
+        # 네이버 쇼핑검색으로 대표 이미지를 자동 채움 시도 — 쿠팡과 무관, 실패해도 등록은 계속 진행
+        from app.discovery.naver_search import NaverSearchError, search_product_image
+
+        try:
+            image_result = search_product_image(value)
+            if image_result and image_result.image:
+                row["image_urls"] = [image_result.image]
+        except NaverSearchError:
+            pass
     result = client.table("products").insert(row).execute()
     new_id = result.data[0]["id"]
     return RedirectResponse(f"/discover?selected={new_id}&view=detail&toast=상품을+등록했어요", status_code=302)
+
+
+@router.post("/discover/extract-review-image")
+async def discover_extract_review_image(file: UploadFile = File(...)):
+    """리뷰 스크린샷 업로드 -> Claude vision으로 텍스트만 추출해 반환한다 (쿠팡 크롤링과 무관, JS fetch용)."""
+    image_bytes = await file.read()
+    media_type = file.content_type or "image/png"
+    try:
+        text = extract_review_text(image_bytes, media_type)
+    except ReviewOcrError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=502)
+    return JSONResponse({"text": text})
 
 
 @router.post("/discover/{product_id}/analyze")
@@ -255,6 +369,7 @@ def discover_analyze(
     rating_summary: str = Form(""),
     needs_education: str = Form(None),
     deeplink: str = Form(""),
+    category: str = Form(""),
     next: str = Form("false"),
 ):
     client = get_client()
@@ -278,18 +393,23 @@ def discover_analyze(
     }
     if deeplink.strip():
         update_row["deeplink"] = deeplink.strip()
+    if category.strip():
+        update_row["category"] = category.strip()
     client.table("products").update(update_row).eq("id", product_id).execute()
 
     try:
         analysis_json = analyze_reviews(reviews_raw)
         review_row = client.table("reviews").select("*").eq("product_id", product_id).order("created_at", desc=True).limit(1).execute().data[0]
         client.table("review_analysis").insert({"review_id": review_row["id"], "analysis_json": analysis_json}).execute()
-        client.table("products").update({"status": "analyzed"}).eq("id", product_id).execute()
     except ReviewAnalysisError:
         return RedirectResponse(f"/discover?selected={product_id}&view=detail&toast=후기+분석에+실패했어요", status_code=302)
 
-    # "분석 및 다음"(next=true)만 대본작성 탭으로 이동한다. "분석하기"는 발굴 탭에 머문다.
+    # "분석 및 다음"(next=true)만 status를 analyzed로 올려 대본작성 탭으로 이동한다.
+    # "분석하기"는 status를 reviews_collected로 유지해 상품선택 탭 큐에 그대로 남긴다
+    # (DISCOVER_STATUSES에는 reviews_collected가, SCRIPT_STATUSES에는 analyzed만 포함되므로
+    # status를 올려버리면 어느 탭에 머물든 상관없이 상품선택 큐에서 사라져버린다).
     if next == "true":
+        client.table("products").update({"status": "analyzed"}).eq("id", product_id).execute()
         return RedirectResponse("/scripts?toast=분석+완료!+대본작성을+시작해보세요", status_code=302)
     return RedirectResponse(f"/discover?selected={product_id}&view=detail&toast=분석+완료!", status_code=302)
 
@@ -365,6 +485,35 @@ def scripts_generate(request: Request, product_id: str, tone: str = Form(...)):
     ).execute()
     client.table("products").update({"status": "script_generated"}).eq("id", product_id).execute()
     return RedirectResponse(f"/scripts?selected={product_id}&view=detail&toast={tone}+톤으로+다시+생성했어요", status_code=302)
+
+
+@router.post("/scripts/{script_id}/edit")
+def scripts_edit(
+    request: Request,
+    script_id: str,
+    product_id: str = Form(...),
+    empathy: str = Form(""),
+    emotion: str = Form(""),
+    problem: str = Form(""),
+    solution: str = Form(""),
+    product: str = Form(""),
+):
+    client = get_client()
+    existing = client.table("scripts").select("*").eq("id", script_id).execute().data[0]
+    script_json = existing["script_json"]
+    script_json["structure"] = {
+        "empathy": empathy,
+        "emotion": emotion,
+        "problem": problem,
+        "solution": solution,
+        "product": product,
+    }
+    client.table("scripts").update(
+        {"script_json": script_json, "version": existing["version"] + 1}
+    ).eq("id", script_id).execute()
+    return RedirectResponse(
+        f"/scripts?selected={product_id}&view=detail&toast=대본을+수정했어요", status_code=302
+    )
 
 
 @router.post("/scripts/{script_id}/approve")

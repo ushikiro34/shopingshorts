@@ -1,11 +1,16 @@
 {% extends "base.html" %}
-{% block title %}홈 · couparvi{% endblock %}
+{% block title %}대시보드 · couparvi{% endblock %}
 {% block content %}
-<div class="hello">안녕하세요, 오늘도 화이팅이에요 ✨</div>
-<div class="hello-sub">오늘 목표 {{ daily_goal }}편 중 {{ uploaded_today }}편 게시완료</div>
+<div class="dash-greeting-row">
+  <div>
+    <p class="dash-greeting-sub">안녕하세요, {{ user.email.split('@')[0] if user else '' }} 님 · {{ today_label }}</p>
+    <h1 class="dash-headline">오늘도 좋은 광고를<br>만들어봐요</h1>
+  </div>
+  <a class="btn dash-new-btn" href="/discover">+ 새 프로젝트</a>
+</div>
 
 <div class="summary-grid">
-  <a class="summary-card{% if counts.discover > 0 %}{% endif %}" href="/discover">
+  <a class="summary-card" href="/discover">
     <div class="num">{{ counts.discover }}</div>
     <div class="label">발굴대기</div>
   </a>
@@ -23,10 +28,30 @@
   </a>
 </div>
 
-<div class="tabbar">
-  <a class="tab-pill" href="/discover">상품선택 <span class="badge">{{ counts.discover }}</span></a>
-  <a class="tab-pill" href="/scripts">대본작성 <span class="badge">{{ counts.script }}</span></a>
-  <a class="tab-pill" href="/media">미디어제작 <span class="badge">{{ counts.media }}</span></a>
-  <a class="tab-pill" href="/publish">게시검토 <span class="badge">{{ counts.publish }}</span></a>
+<div class="dash-section-head">
+  <h2 class="dash-section-title">내 프로젝트</h2>
+</div>
+
+<div class="panel project-panel">
+  <div class="project-grid">
+    {% for p in recent_projects %}
+    <a class="project-card" href="/{{ p.tab }}?selected={{ p.id }}&view=detail">
+      <div class="project-card-thumb">
+        {% if p.image_url %}<img src="{{ p.image_url }}" alt="">{% endif %}
+        <span class="pill pill-status-{{ p.status_tier }} project-card-badge">{{ p.status_label }}</span>
+      </div>
+      <div class="project-card-body">
+        <div class="project-card-name">{{ p.name }}</div>
+        <div class="project-card-stats">
+          <span class="project-card-meta">{{ p.category }}</span>
+          <span class="project-card-date">{{ p.created_date }}</span>
+        </div>
+      </div>
+    </a>
+    {% endfor %}
+    {% for _ in range(6 - recent_projects|length) %}
+    <div class="project-card project-card-empty"></div>
+    {% endfor %}
+  </div>
 </div>
 {% endblock %}

@@ -4,50 +4,54 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}couparvi{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
   <div class="app-shell">
-    <header class="app-header">
-      <div class="header-info">
-        <span class="brand">couparvi</span>
-        {% if user %}
-          <a class="logout" href="/logout">{{ user.email }} · 로그아웃</a>
-        {% endif %}
-      </div>
-    </header>
+    {% include "_sidebar.html" %}
 
-    <div class="app-body">
-      <div class="body-top">
-        <div class="container">
-          {% if policy_alert_count and policy_alert_count > 0 %}
-          <div class="policy-banner">
-            <span>⚠️ 미검토 정책 변경 알림 {{ policy_alert_count }}건</span>
-            <a href="/policy-alerts">확인하러 가기</a>
+    <div class="main-area">
+      <div class="app-body">
+        <div class="body-top">
+          <div class="container">
+            {% if policy_alert_count and policy_alert_count > 0 %}
+            <div class="policy-banner">
+              <span>⚠️ 미검토 정책 변경 알림 {{ policy_alert_count }}건</span>
+              <a href="/policy-alerts">확인하러 가기</a>
+            </div>
+            {% endif %}
+            {% block body_top %}{% endblock %}
           </div>
-          {% endif %}
-          {% block body_top %}{% endblock %}
         </div>
-      </div>
 
-      <div class="body-middle">
-        <div class="container">
-          {% block content %}{% endblock %}
+        <div class="body-middle">
+          <div class="container">
+            {% block content %}{% endblock %}
+          </div>
         </div>
-      </div>
 
-      <div class="body-bottom">
-        {% block body_bottom %}{% endblock %}
+        <div class="body-bottom">
+          {% block body_bottom %}{% endblock %}
+        </div>
       </div>
     </div>
-
-    <footer class="app-footer">
-      {% block footer %}{% endblock %}
-    </footer>
   </div>
 
   {% if toast %}
-  <div class="toast">{{ toast }}</div>
+  <div class="toast" id="toast">{{ toast }}</div>
+  <script>
+    (function () {
+      var el = document.getElementById("toast");
+      if (!el) return;
+      setTimeout(function () {
+        el.classList.add("toast-hide");
+        setTimeout(function () { el.remove(); }, 300);
+      }, 3000);
+    })();
+  </script>
   {% endif %}
 </body>
 </html>

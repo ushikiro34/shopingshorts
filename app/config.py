@@ -25,6 +25,10 @@ EDUCATION_TRIGGER_KEYWORDS = [
 COUPANG_ACCESS_KEY = os.getenv("COUPANG_ACCESS_KEY", "")
 COUPANG_SECRET_KEY = os.getenv("COUPANG_SECRET_KEY", "")
 
+# 네이버 쇼핑검색 오픈API — 쿠팡과 무관, 수동 등록 상품의 대표 이미지 자동 채움용
+NAVER_CLIENT_ID = os.getenv("NAVER_CLIENT_ID", "")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET", "")
+
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
