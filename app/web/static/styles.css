@@ -308,7 +308,9 @@ a { color: inherit; text-decoration: none; }
    그대로 채움)로 전환한다 — textarea 자체는 내부 텍스트를 세로로 가운데 정렬할 CSS 수단이
    없기 때문에 표시용/편집용 요소를 분리했다. 라벨도 카드 전체 높이를 채운 채(align-self:stretch)
    내부 텍스트만 중앙정렬한다. */
-.script-title { font-family: var(--font-body); }
+/* 타이틀을 아래로 내리고(상단 패딩), 아래 카드의 라벨 텍스트(테두리 1px + 패딩 12px = 13px)와
+   왼쪽 시작 위치가 맞도록 좌측 패딩을 준다. */
+.script-title { font-family: var(--font-body); margin: 0 0 4px; padding: 24px 0 0 13px; }
 .script-card-list { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
 .script-card {
   display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 0;

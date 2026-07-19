@@ -26,10 +26,10 @@
     {% if not selected %}
     <div class="empty-banner">왼쪽 목록에서 상품을 선택해주세요.</div>
     {% elif not script %}
-    <h2 class="script-title" style="margin-top:0;">{{ selected.product_name }}</h2>
+    <h2 class="script-title">{{ selected.product_name }}</h2>
     <p style="color:var(--text-dim);">아직 생성된 대본이 없어요. 오른쪽에서 톤을 골라 대본을 만들어보세요.</p>
     {% else %}
-    <h2 class="script-title" style="margin-top:0;">{{ selected.product_name }} <span class="pill pill-accent">{{
+    <h2 class="script-title">{{ selected.product_name }} <span class="pill pill-accent">{{
         script.tone }}</span></h2>
 
     {% if script.script_json.educational_note and script.script_json.educational_note.included %}
