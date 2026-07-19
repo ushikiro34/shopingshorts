@@ -38,6 +38,28 @@ body {
   font-size: 16px;
 }
 
+/* 실제 밤하늘 장노출 사진처럼 아주 작은 점 별 수십~백여 개가 흩뿌려진 느낌을 낸다.
+   개수/좌표/밝기가 랜덤이라 _star_field.html의 스크립트가 매 로드마다 동적으로 별을
+   생성한다(정적으로 100개 넘게 손으로 배치하는 대신). 별마다 animation-delay/duration/
+   --peak(최대 밝기)가 제각각이라 하나씩 랜덤한 타이밍에 밝아졌다 어두워진다. */
+.star-field { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+.star {
+  position: absolute;
+  border-radius: 50%;
+  background: #fff;
+  opacity: 0.15;
+  animation-name: star-twinkle;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+.star-bright {
+  box-shadow: 0 0 3px 1px rgba(255,255,255,0.55);
+}
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.15; }
+  50% { opacity: var(--peak, 0.6); }
+}
+
 h1, h2, h3, .sidebar-brand .brand-name {
   font-family: var(--font-heading);
   font-weight: 700;
