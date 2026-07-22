@@ -6,25 +6,25 @@
     <p class="dash-greeting-sub">안녕하세요, {{ user.email.split('@')[0] if user else '' }} 님 · {{ today_label }}</p>
     <h1 class="dash-headline">오늘도 좋은 광고를<br>만들어봐요</h1>
   </div>
-  <a class="btn dash-new-btn" href="/discover">+ 새 프로젝트</a>
+  <a class="btn dash-new-btn" href="/discover">+ 새 광고제작</a>
 </div>
 
 <div class="summary-grid">
   <a class="summary-card" href="/discover">
     <div class="num">{{ counts.discover }}</div>
-    <div class="label">발굴대기</div>
+    <div class="label">상품선택</div>
   </a>
   <a class="summary-card" href="/scripts">
     <div class="num">{{ counts.script }}</div>
-    <div class="label">대본검수</div>
+    <div class="label">대본작성</div>
   </a>
   <a class="summary-card" href="/media">
     <div class="num">{{ counts.media }}</div>
-    <div class="label">제작중</div>
+    <div class="label">미디어제작</div>
   </a>
   <a class="summary-card{% if counts.publish > 0 %} warning{% endif %}" href="/publish">
     <div class="num">{{ counts.publish }}</div>
-    <div class="label">게시대기</div>
+    <div class="label">게시검토</div>
   </a>
 </div>
 

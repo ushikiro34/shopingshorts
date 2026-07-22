@@ -14,7 +14,8 @@ STRUCTURE_INSTRUCTION = """구조는 정확히 5단계로 고정한다: 공감 -
 - emotion: 공감을 구체적 감정(답답함/불안/설렘 등)으로 증폭시키는 문장
 - problem: 그 감정의 원인이 되는 문제를 명확히 짚는 문장
 - solution: 문제를 해결하는 방향성 제시 (아직 상품명 등장 전)
-- product: 상품 등장 + 리뷰 근거 + CTA까지 포함하는 마무리 문장들 (가격은 언급하지 않는다)
+- product: 상품 등장 + 리뷰 근거 + CTA까지 포함하는 마무리 문장들 (가격은 언급하지 않는다).
+  실제 상품명은 절대 쓰지 않고 "이 제품은", "이 제품이" 처럼 지칭한다.
 CTA는 별도 단계가 아니라 product 단계 마지막 문장에 자연스럽게 포함한다."""
 
 TONE_INSTRUCTIONS = {
@@ -114,8 +115,9 @@ def build_system_prompt(tone: str, needs_education: bool) -> str:
 제약(반드시 지켜야 하며, 어기면 시스템이 자동으로 반려한다):
 - scenes 배열의 원소 개수는 반드시 3개 이상 8개 이하다. 9개 이상은 절대 금지. 5단계 구조를 scene 여러 개로
   나누더라도 총합이 8을 넘지 않게 통합하라 (예: problem+educational_note를 한 scene에 같이 담아도 된다).
-- narration을 모두 합친 영상 길이(estimated_duration_sec)는 30~60초.
+- narration을 모두 합친 영상 길이(estimated_duration_sec)는 30~45초.
 - narration에는 리뷰 원문 문장을 그대로 옮기지 않는다 (재구성된 표현만 사용).
+- product 단계 narration에는 실제 상품명(user 메시지의 product_name 값)을 쓰지 않는다. "이 제품은"/"이 제품이" 등으로 지칭한다.
 - disclosure 필드에는 반드시 다음 문구를 정확히 그대로 넣는다: "{PARTNERS_DISCLOSURE}"
 - tone 필드에는 "{tone}"을 그대로 넣는다.
 - educational_note 필드는 위 지시를 정확히 따른다. 아래 예시의 included/text 값을 그대로 참고하라

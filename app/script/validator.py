@@ -14,7 +14,7 @@ STRUCTURE_FIELDS = ["empathy", "emotion", "problem", "solution", "product"]
 MIN_SCENES = 3
 MAX_SCENES = 8
 MIN_DURATION_SEC = 30
-MAX_DURATION_SEC = 60
+MAX_DURATION_SEC = 45
 MIN_VERBATIM_OVERLAP_WORDS = 8
 
 # v2.2: 가격은 어디에도 숫자로 표기하지 않는다 (사용자 피드백) — "18,900원", "2만원대" 등을 잡는다.

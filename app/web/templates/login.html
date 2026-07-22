@@ -1,29 +1,33 @@
 <!doctype html>
 <html lang="ko">
+
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>로그인 · couparvi</title>
+  <title>LOG IN · couparvi</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
+
 <body>
   {% include "_star_field.html" %}
   <div class="login-wrap">
     <div class="login-card">
-      <h1>안녕하세요 👋 다시 오셨네요</h1>
+      <h1>WELCOME · COUPARVI</h1>
       <form method="post" action="/login">
         <div class="field">
-          <label for="email">이메일</label>
+          <label for="email">E-MAIL</label>
           <input type="email" id="email" name="email" required autofocus>
         </div>
         <div class="field">
-          <label for="password">비밀번호</label>
+          <label for="password">PASSWORD</label>
           <input type="password" id="password" name="password" required>
         </div>
-        <button class="btn btn-primary" type="submit">로그인</button>
+        <button class="btn btn-primary" type="submit">LOG IN</button>
         {% if error %}
         <div class="error-text">{{ error }}</div>
         {% endif %}
@@ -31,4 +35,5 @@
     </div>
   </div>
 </body>
+
 </html>

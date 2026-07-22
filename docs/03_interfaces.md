@@ -176,7 +176,7 @@ Claude가 reviews_raw를 입력받아 생성. **원문을 그대로 옮기지 �
 - 과장·확정적 인과 표현 대신 "~일 수 있어요", "~로 알려져 있어요" 같은 절제된 어투 사용
 - `needs_education=false`인 상품은 `included: false, text: ""`로 둔다
 
-제약: `scenes` 3~8개, 30~60초, `narration`은 reviews_raw와 8단어 이상 연속 일치 금지, `structure`의 5개 필드 모두 필수(비어있지 않음), `tone`은 7종 중 하나.
+제약: `scenes` 3~8개, 30~45초, `narration`은 reviews_raw와 8단어 이상 연속 일치 금지, `structure`의 5개 필드 모두 필수(비어있지 않음), `tone`은 7종 중 하나.
 
 ## 5. API 엔드포인트
 
