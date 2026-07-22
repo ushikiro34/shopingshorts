@@ -38,13 +38,15 @@
     <a class="project-card" href="/{{ p.tab }}?selected={{ p.id }}&view=detail">
       <div class="project-card-thumb">
         {% if p.image_url %}<img src="{{ p.image_url }}" alt="">{% endif %}
-        <span class="pill pill-status-{{ p.status_tier }} project-card-badge">{{ p.status_label }}</span>
       </div>
       <div class="project-card-body">
         <div class="project-card-name">{{ p.name }}</div>
         <div class="project-card-stats">
           <span class="project-card-meta">{{ p.category }}</span>
           <span class="project-card-date">{{ p.created_date }}</span>
+        </div>
+        <div class="project-card-badge-row">
+          <span class="pill pill-status-{{ p.status_tier }} project-card-badge">{{ p.status_label }}</span>
         </div>
       </div>
     </a>

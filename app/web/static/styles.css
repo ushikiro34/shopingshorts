@@ -472,10 +472,14 @@ a {
   display: block;
 }
 
+.project-card-badge-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
 .project-card-badge {
-  position: absolute;
-  top: 8px;
-  right: 8px;
+  flex: 0 0 auto;
 }
 
 .project-card-body {
@@ -848,7 +852,9 @@ a {
 }
 
 .pill-status-2 {
-  background: var(--accent-tint);
+  /* --accent-tint을 다른 곳(active nav 등)에서 불투명 오렌지로 바꿔 쓰면서
+     여기 텍스트와 배경이 거의 같은 색이 돼 안 보였다 -> 전용 색으로 분리 */
+  background: #4A2E1C;
   color: var(--accent);
 }
 
@@ -858,7 +864,8 @@ a {
 }
 
 .pill-status-4 {
-  background: var(--accent-deep-tint);
+  /* pill-status-2와 같은 이유 (--accent-deep-tint가 불투명 밝은색으로 바뀜) -> 전용 색으로 분리 */
+  background: #6B3A12;
   color: #F0B37E;
 }
 
@@ -910,6 +917,17 @@ a {
   font-family: var(--font-body);
   margin: 0 0 4px;
   padding: 24px 0 0 13px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* 톤 뱃지가 배경/텍스트 색이 거의 같아 안 보이는 문제 -> 뱃지 대신 포인트색 텍스트로 표현 */
+.script-tone-note {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
 }
 
 .script-card-list {
@@ -940,8 +958,10 @@ a {
   flex: 0 0 90px;
   align-self: stretch;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   padding: 12px;
   font-size: 13px;
   font-weight: 700;
@@ -950,6 +970,12 @@ a {
   color: var(--text-dim);
   background: var(--bg);
   border-right: 1px solid var(--border);
+}
+
+.script-card-icon {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
 }
 
 .script-cell-display {
