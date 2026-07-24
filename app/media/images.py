@@ -17,9 +17,11 @@ CANVAS_WIDTH = 1080
 CANVAS_HEIGHT = 1920
 CANVAS_SIZE = (CANVAS_WIDTH, CANVAS_HEIGHT)
 
-# 자막 안전영역 — 상품 이미지를 이 비율 안쪽으로만 배치해 자막(하단)·훅 텍스트(상단)와 겹치지 않게 한다.
-SAFE_WIDTH_RATIO = 0.86
-SAFE_HEIGHT_RATIO = 0.62
+# 상품 이미지가 프레임을 꽉 채우게 하는 안전영역 비율. 자막은 반투명 박스로 이미지 위에
+# 얹히므로(겹쳐도 가독성 문제 없음) 예전처럼 0.62로 작게 잡을 필요가 없었다 — 위아래로
+# 블러 여백이 크게 남아 "상품 사진에 액자를 끼운 슬라이드"처럼 보이던 문제를 해결한다.
+SAFE_WIDTH_RATIO = 0.94
+SAFE_HEIGHT_RATIO = 0.90
 
 BACKGROUND_BLUR_RADIUS = 40
 BACKGROUND_BRIGHTNESS = 0.7

@@ -2,8 +2,10 @@ import os
 
 from app.media.render import (
     build_animated_caption_filter,
+    build_hook_text_filter,
     build_scene_filter_complex,
     build_text_block_filter,
+    build_xfade_filter_complex,
     build_zoompan_filter,
     escape_path_for_filter,
     estimate_word_timings,
@@ -183,3 +185,31 @@ def test_wrap_text_lines_respects_manual_newline():
     font = resolve_font_path()
     lines = wrap_text_lines("첫째 줄\n둘째 줄", font, 54, max_width_px=900)
     assert lines == ["첫째 줄", "둘째 줄"]
+
+
+def test_build_hook_text_filter_writes_lines_and_draws_text(tmp_path):
+    font = resolve_font_path()
+    filt = build_hook_text_filter("이거 실화냐", font, str(tmp_path), "scene1")
+    assert "drawtext=" in filt
+    assert "bordercolor=black" in filt
+
+
+def test_build_xfade_filter_complex_chains_all_clips():
+    filt, v_label, a_label = build_xfade_filter_complex([3.0, 4.0, 2.0])
+    assert filt.count("xfade=") == 2
+    assert filt.count("acrossfade=") == 2
+    assert v_label == "vout"
+    assert a_label == "aout"
+
+
+def test_build_xfade_filter_complex_offsets_account_for_overlap():
+    # 2번째 전환은 (1번째 클립 길이 + 2번째 클립 길이 - 전환시간) - 전환시간 지점에서 시작해야 한다
+    filt, _, _ = build_xfade_filter_complex([3.0, 4.0, 2.0], transition_dur=0.5)
+    assert "offset=2.500" in filt  # 3.0 - 0.5
+    assert "offset=6.000" in filt  # (3.0+4.0-0.5) - 0.5
+
+
+def test_build_xfade_filter_complex_two_clips():
+    filt, v_label, a_label = build_xfade_filter_complex([5.0, 5.0])
+    assert filt.count("xfade=") == 1
+    assert v_label == "vout"

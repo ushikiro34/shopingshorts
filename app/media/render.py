@@ -24,9 +24,14 @@ FPS = 30
 BGM_VOLUME_DB = -18
 DISCLOSURE_OVERLAY_SEC = 2
 
-CAPTION_FONTSIZE = 54
+CAPTION_FONTSIZE = 60
 CAPTION_BOTTOM_MARGIN = 360
 CAPTION_MAX_WIDTH = int(WIDTH * 0.88)
+# 조회수 잘 나오는 쇼츠 자막 스타일(굵은 노란색 + 검정 외곽선)을 참고했다 — 흰 글씨 하나만
+# 있을 때보다 훨씬 또렷하게 튀어 보인다.
+CAPTION_TEXT_COLOR = "0xFFE600"
+CAPTION_OUTLINE_COLOR = "black"
+CAPTION_OUTLINE_WIDTH = 5
 DISCLOSURE_FONTSIZE = 34
 DISCLOSURE_BOTTOM_MARGIN = 140
 DISCLOSURE_MAX_WIDTH = int(WIDTH * 0.90)
@@ -205,10 +210,38 @@ def build_animated_caption_filter(
             _write_text_file(partial_text, path)
             escaped_text = escape_path_for_filter(path)
             filters.append(
-                f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor=white:"
+                f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor={CAPTION_TEXT_COLOR}:"
+                f"bordercolor={CAPTION_OUTLINE_COLOR}:borderw={CAPTION_OUTLINE_WIDTH}:"
                 f"fontsize={fontsize}:x=(w-text_w)/2:y={y}:text_shaping=0:enable='{enable}'"
             )
         word_cursor += len(line_words)
+    return ",".join(filters)
+
+
+HOOK_FONTSIZE = 66
+HOOK_TOP_MARGIN = 160
+HOOK_MAX_WIDTH = int(WIDTH * 0.86)
+HOOK_LINE_HEIGHT = HOOK_FONTSIZE + 14
+
+
+def build_hook_text_filter(text: str, font_path: str, work_dir: str, basename: str) -> str:
+    """첫 씬 상단에 처음부터(단어 등장 없이) 큼직하게 박아두는 후킹 문구.
+
+    쇼츠 초반 1~2초 안에 시선을 붙잡는 "패턴 인터럽트" 문구 관행을 참고했다 — 하단의
+    단어별 등장 자막과 별개로, 화면 위쪽에 고정된 굵은 헤드라인을 하나 더 얹는다.
+    """
+    escaped_font = escape_path_for_filter(font_path)
+    lines = wrap_text_lines(text, font_path, HOOK_FONTSIZE, HOOK_MAX_WIDTH)
+    filters = []
+    for i, line in enumerate(lines):
+        path = os.path.join(work_dir, f"{basename}.hook.line{i}.txt")
+        _write_text_file(line, path)
+        escaped_text = escape_path_for_filter(path)
+        y = HOOK_TOP_MARGIN + i * HOOK_LINE_HEIGHT
+        filters.append(
+            f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor=white:"
+            f"bordercolor=black:borderw=6:fontsize={HOOK_FONTSIZE}:x=(w-text_w)/2:y={y}:text_shaping=0"
+        )
     return ",".join(filters)
 
 
@@ -219,16 +252,30 @@ def build_scene_filter_complex(
     work_dir: str,
     basename: str,
     disclosure_line_paths: list[str] | None = None,
+    hook_text: str | None = None,
+    has_icon: bool = False,
 ) -> str:
-    """이미지 한 장을 Ken Burns + 단어별 등장 자막(+ 마지막 씬은 고지 오버레이)까지 입힌
-    filter_complex를 만든다."""
+    """이미지 한 장을 Ken Burns + 단어별 등장 자막(+ 첫 씬은 상단 후킹 문구, 마지막 씬은
+    아이콘 오버레이 + 고지 오버레이)까지 입힌 filter_complex를 만든다."""
     zoompan = build_zoompan_filter(duration_sec)
     caption_block = build_animated_caption_filter(caption_text, duration_sec, font_path, work_dir, basename)
+    hook_block = build_hook_text_filter(hook_text, font_path, work_dir, basename) if hook_text else None
+
+    stage = f"[0:v]{zoompan}[zoomed];[zoomed]{caption_block}"
+    if hook_block:
+        stage = f"{stage}[capped_caption];[capped_caption]{hook_block}"
+
+    if has_icon:
+        # 아이콘을 상품 사진에 직접 합성해두면 Ken Burns 확대/이동에 같이 크롭돼 랜덤
+        # 팬 방향에 따라 화면 밖으로 밀려날 수 있다 — 줌 이후 단계에서 오버레이로 얹어
+        # 팬/줌과 무관하게 항상 같은 위치에 고정되게 한다. 아이콘은 입력 인덱스 2번
+        # (0=이미지, 1=오디오, 2=아이콘)로 들어온다.
+        stage = f"{stage}[precap];[precap][2:v]overlay=x=W-w-60:y=100"
 
     if disclosure_line_paths is None:
         # JPEG 소스는 풀레인지(yuvj420p)로 디코딩되기 쉬워 명시적으로 yuv420p(리미티드 레인지)로
         # 재태깅한다 — 안 그러면 libx264가 yuvj420p로 인코딩해 phase3_checklist 3번(pix_fmt) 위반.
-        return f"[0:v]{zoompan}[zoomed];[zoomed]{caption_block},format=yuv420p[outv]"
+        return f"{stage},format=yuv420p[outv]"
 
     enable_expr = f"gte(t,{max(duration_sec - DISCLOSURE_OVERLAY_SEC, 0)})"
     disclosure_block = build_text_block_filter(
@@ -238,10 +285,7 @@ def build_scene_filter_complex(
         fontsize=DISCLOSURE_FONTSIZE,
         enable=enable_expr,
     )
-    return (
-        f"[0:v]{zoompan}[zoomed];[zoomed]{caption_block}[capped];"
-        f"[capped]{disclosure_block},format=yuv420p[outv]"
-    )
+    return f"{stage}[capped];[capped]{disclosure_block},format=yuv420p[outv]"
 
 
 def _write_text_file(text: str, path: str) -> str:
@@ -309,8 +353,10 @@ def render_scene_clip(
     work_dir: str,
     font_path: str | None = None,
     disclosure_text: str | None = None,
+    hook_text: str | None = None,
+    icon_path: str | None = None,
 ) -> str:
-    """이미지+오디오 한 씬을 Ken Burns+자막(+고지)까지 입힌 mp4 클립으로 렌더링한다."""
+    """이미지+오디오 한 씬을 Ken Burns+자막(+고지+아이콘)까지 입힌 mp4 클립으로 렌더링한다."""
     active_font = font_path or resolve_font_path()
     # output_path 기반으로 고유 파일명을 만든다 — 여러 씬이 같은 work_dir을 공유할 때
     # 고정 파일명을 쓰면 다음 씬이 이전 씬의 캡션 파일을 덮어써버린다.
@@ -327,13 +373,17 @@ def render_scene_clip(
         )
 
     filter_complex = build_scene_filter_complex(
-        duration_sec, caption_text, active_font, work_dir, basename, disclosure_paths
+        duration_sec, caption_text, active_font, work_dir, basename, disclosure_paths, hook_text,
+        has_icon=bool(icon_path),
     )
+
+    inputs = ["-loop", "1", "-i", image_path, "-i", audio_path]
+    if icon_path:
+        inputs += ["-loop", "1", "-i", icon_path]
 
     run_ffmpeg(
         [
-            "-loop", "1", "-i", image_path,
-            "-i", audio_path,
+            *inputs,
             "-filter_complex", filter_complex,
             "-map", "[outv]", "-map", "1:a",
             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-color_range", "tv", "-r", str(FPS),
@@ -354,6 +404,68 @@ def concat_clips(clip_paths: list[str], list_file_path: str, output_path: str) -
     lines = [f"file '{_escape_path_for_concat_list(os.path.abspath(p))}'" for p in clip_paths]
     _write_text_file("\n".join(lines), list_file_path)
     run_ffmpeg(["-f", "concat", "-safe", "0", "-i", list_file_path, "-c", "copy", output_path])
+    return output_path
+
+
+TRANSITION_DURATION_SEC = 0.4
+TRANSITION_STYLE = "fade"
+
+
+def build_xfade_filter_complex(
+    durations: list[float], transition: str = TRANSITION_STYLE, transition_dur: float = TRANSITION_DURATION_SEC
+) -> tuple[str, str, str]:
+    """xfade(영상)+acrossfade(오디오)를 씬 개수만큼 체인으로 엮은 filter_complex를 만든다.
+
+    concat 데뮤서(-c copy)는 클립을 그냥 이어붙이기만 해서 컷이 딱딱 끊긴다 — 화면이
+    자연스럽게 겹쳐 넘어가도록 각 전환마다 짧게 크로스페이드를 넣는다. 반환값은
+    (filter_complex 문자열, 최종 비디오 라벨, 최종 오디오 라벨).
+    """
+    n = len(durations)
+    parts = []
+    v_label, a_label = "0:v", "0:a"
+    cumulative = durations[0]
+    for i in range(1, n):
+        next_v, next_a = f"{i}:v", f"{i}:a"
+        out_v = "vout" if i == n - 1 else f"v{i}"
+        out_a = "aout" if i == n - 1 else f"a{i}"
+        offset = max(cumulative - transition_dur, 0)
+        parts.append(f"[{v_label}][{next_v}]xfade=transition={transition}:duration={transition_dur}:offset={offset:.3f}[{out_v}]")
+        parts.append(f"[{a_label}][{next_a}]acrossfade=d={transition_dur}[{out_a}]")
+        v_label, a_label = out_v, out_a
+        cumulative = cumulative + durations[i] - transition_dur
+    return ";".join(parts), v_label, a_label
+
+
+def concat_clips_with_transitions(
+    clip_paths: list[str],
+    durations: list[float],
+    output_path: str,
+    transition: str = TRANSITION_STYLE,
+    transition_dur: float = TRANSITION_DURATION_SEC,
+) -> str:
+    """씬 클립들을 하드컷 대신 짧은 크로스페이드로 이어붙인다.
+
+    xfade/acrossfade는 스트림을 다시 인코딩해야 해서(-c copy 불가) concat_clips보다 느리지만,
+    씬 전환이 뚝뚝 끊기지 않고 자연스럽게 넘어간다.
+    """
+    if len(clip_paths) == 1:
+        run_ffmpeg(["-i", clip_paths[0], "-c", "copy", output_path])
+        return output_path
+
+    filter_complex, v_label, a_label = build_xfade_filter_complex(durations, transition, transition_dur)
+    inputs = []
+    for p in clip_paths:
+        inputs += ["-i", p]
+    run_ffmpeg(
+        [
+            *inputs,
+            "-filter_complex", filter_complex,
+            "-map", f"[{v_label}]", "-map", f"[{a_label}]",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-color_range", "tv", "-r", str(FPS),
+            "-c:a", "aac",
+            output_path,
+        ]
+    )
     return output_path
 
 

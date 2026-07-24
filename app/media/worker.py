@@ -11,13 +11,13 @@ import time
 from datetime import datetime, timezone
 
 from app.db import get_client
-from app.media.graphics import compose_educational_note_scene
+from app.media.graphics import compose_educational_note_scene, draw_icon
 from app.media.images import compose_scene_image, download_image, save_jpeg
 from app.media.render import (
     HEIGHT,
     WIDTH,
     RenderError,
-    concat_clips,
+    concat_clips_with_transitions,
     mix_bgm,
     pick_bgm_track,
     render_scene_clip,
@@ -43,6 +43,18 @@ def _scene_uses_educational_graphic(scene_narration: str, educational_note_text:
         return False
     snippet = educational_note_text[:20]
     return snippet in scene_narration or scene_narration in educational_note_text
+
+
+def build_cta_icon_png(work_dir: str) -> str:
+    """마지막(구매 유도) 씬에 얹을 체크 아이콘을 별도 투명 PNG로 저장한다.
+
+    상품 사진에 직접 합성하면 Ken Burns 확대/이동에 같이 크롭돼 랜덤 팬 방향에 따라
+    화면 밖으로 밀려날 수 있어서, ffmpeg overlay로 줌 이후 단계에 얹을 수 있게 분리했다.
+    """
+    icon = draw_icon("check", size=150, color=(255, 230, 0, 255))
+    path = os.path.join(work_dir, "cta_icon.png")
+    icon.save(path)
+    return path
 
 
 def build_scene_image(scene: dict, product: dict, script_json: dict, work_dir: str) -> str:
@@ -79,7 +91,12 @@ def render_script(
 
     if status_callback:
         status_callback("generating_images")
-    image_paths = {scene["seq"]: build_scene_image(scene, product, script_json, work_dir) for scene in scenes}
+    last_seq = scenes[-1]["seq"]
+    first_seq = scenes[0]["seq"]
+    image_paths = {
+        scene["seq"]: build_scene_image(scene, product, script_json, work_dir) for scene in scenes
+    }
+    icon_path = build_cta_icon_png(work_dir)
 
     if status_callback:
         status_callback("generating_audio")
@@ -88,25 +105,29 @@ def render_script(
 
     if status_callback:
         status_callback("assembling")
-    last_seq = scenes[-1]["seq"]
     clip_paths = []
+    clip_durations = []
     for scene in scenes:
         seq = scene["seq"]
         clip_path = os.path.join(work_dir, f"clip_{seq}.mp4")
+        duration = audio_by_seq[seq]["duration_sec"]
         render_scene_clip(
             image_paths[seq],
             audio_by_seq[seq]["path"],
-            audio_by_seq[seq]["duration_sec"],
+            duration,
             scene["caption"],
             clip_path,
             work_dir,
             font_path=font,
             disclosure_text=script_json["disclosure"] if seq == last_seq else None,
+            hook_text=scene["caption"] if seq == first_seq else None,
+            icon_path=icon_path if seq == last_seq else None,
         )
         clip_paths.append(clip_path)
+        clip_durations.append(duration)
 
-    concatenated = concat_clips(
-        clip_paths, os.path.join(work_dir, "concat_list.txt"), os.path.join(work_dir, "concatenated.mp4")
+    concatenated = concat_clips_with_transitions(
+        clip_paths, clip_durations, os.path.join(work_dir, "concatenated.mp4")
     )
     bgm_path = pick_bgm_track()
     return mix_bgm(concatenated, bgm_path, os.path.join(work_dir, "final.mp4"))

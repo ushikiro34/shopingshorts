@@ -141,8 +141,12 @@ def test_edge_retries_once_then_raises_after_two_failures(tmp_path):
         )
 
 
-def test_default_provider_is_edge(tmp_path):
-    # app.config.TTS_PROVIDER 기본값이 "edge" — provider 인자를 생략해도 edge 경로를 탄다.
+def test_omitting_provider_falls_back_to_configured_default(monkeypatch, tmp_path):
+    # provider 인자를 생략하면 app.config.TTS_PROVIDER 값을 따른다 — 실행 환경의 .env가
+    # 무엇으로 설정돼 있든(edge/elevenlabs) 테스트는 그 값에 영향받지 않도록 여기서
+    # 직접 고정한다(전엔 실제 .env의 TTS_PROVIDER를 그대로 흡수해서, 배포 기본값을
+    # elevenlabs로 바꾸자 이 테스트가 실제 네트워크를 호출해버리는 버그가 있었다).
+    monkeypatch.setattr(tts, "TTS_PROVIDER", "edge")
     output_path = str(tmp_path / "scene_1.mp3")
     tts.synthesize_scene_audio(
         "텍스트", output_path, communicate_factory=_FakeCommunicate

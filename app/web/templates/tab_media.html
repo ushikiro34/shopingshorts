@@ -33,6 +33,13 @@
         <video controls src="/{{ render_job.output_path.replace('\\', '/') }}"></video>
       {% elif render_job %}
         <p>🔄 진행중: {{ render_job.status }}</p>
+        {% if render_job.status not in ['done', 'failed'] %}
+        <script>
+          // 렌더링이 끝날 때까지 5초마다 새로고침 — 서버가 다시 렌더링해서 상태가
+          // done/failed로 바뀌면 이 스크립트 자체가 더 이상 내려오지 않아 자동으로 멈춘다.
+          setTimeout(function () { location.reload(); }, 5000);
+        </script>
+        {% endif %}
       {% else %}
         <p style="color:var(--text-dim);">아직 렌더링이 시작되지 않았어요.</p>
       {% endif %}
