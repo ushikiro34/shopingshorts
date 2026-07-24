@@ -55,6 +55,11 @@
   </div>
 
   <div class="panel action-panel">
+    {% if selected %}
+    <div class="prev-stage-section">
+      <a class="prev-stage-link" href="/scripts?selected={{ selected.id }}&view=detail">← 대본작성으로 (대본/이미지 수정)</a>
+    </div>
+    {% endif %}
     {% if selected and render_job and render_job.status == 'done' %}
       <form method="post" action="/media/{{ render_job.id }}/generate-thumbnail">
         <input type="hidden" name="product_id" value="{{ selected.id }}">

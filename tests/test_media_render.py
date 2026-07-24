@@ -1,10 +1,12 @@
 import os
 
 from app.media.render import (
+    build_animated_caption_filter,
     build_scene_filter_complex,
     build_text_block_filter,
     build_zoompan_filter,
     escape_path_for_filter,
+    estimate_word_timings,
     pick_bgm_track,
     resolve_font_path,
     wrap_text_lines,
@@ -72,18 +74,61 @@ def test_build_text_block_filter_no_literal_newline_char_in_output():
     assert "\\n" not in filt
 
 
-def test_build_scene_filter_complex_without_disclosure():
-    filt = build_scene_filter_complex(5.0, ["caption.txt"], "font.ttf")
+def test_build_scene_filter_complex_without_disclosure(tmp_path):
+    font = resolve_font_path()
+    filt = build_scene_filter_complex(5.0, "안녕 반가워요", font, str(tmp_path), "scene1")
     assert "[0:v]" in filt
     assert "[outv]" in filt
-    assert "d.txt" not in filt
+    assert "disc" not in filt
 
 
-def test_build_scene_filter_complex_with_disclosure_has_enable_gate():
-    filt = build_scene_filter_complex(10.0, ["caption.txt"], "font.ttf", disclosure_line_paths=["disc.txt"])
+def test_build_scene_filter_complex_with_disclosure_has_enable_gate(tmp_path):
+    font = resolve_font_path()
+    filt = build_scene_filter_complex(
+        10.0, "안녕 반가워요", font, str(tmp_path), "scene1", disclosure_line_paths=["disc.txt"]
+    )
     assert "disc.txt" in filt
     assert "enable=" in filt
     assert "gte(t,8.0)" in filt  # 10초 씬의 마지막 2초부터 노출
+
+
+def test_estimate_word_timings_spans_full_duration():
+    timings = estimate_word_timings("안녕 반가워요 오늘도", 6.0)
+    assert len(timings) == 3
+    assert timings[0][1] == 0.0
+    assert timings[-1][2] == 6.0
+    # 시간 순서대로 이어져야 한다 (겹치거나 비는 구간 없이)
+    for (_, _, end), (_, next_start, _) in zip(timings, timings[1:]):
+        assert end == next_start
+
+
+def test_estimate_word_timings_longer_word_gets_more_time():
+    timings = estimate_word_timings("아 안녕하세요", 3.0)
+    (word_a, start_a, end_a), (word_b, start_b, end_b) = timings
+    assert word_a == "아" and word_b == "안녕하세요"
+    assert (end_b - start_b) > (end_a - start_a)
+
+
+def test_estimate_word_timings_empty_text_returns_empty_list():
+    assert estimate_word_timings("", 5.0) == []
+
+
+def test_build_animated_caption_filter_has_background_drawbox(tmp_path):
+    font = resolve_font_path()
+    filt = build_animated_caption_filter("안녕 반가워요", 4.0, font, str(tmp_path), "scene1")
+    assert filt.startswith("drawbox=")
+
+
+def test_build_animated_caption_filter_one_drawtext_per_word(tmp_path):
+    font = resolve_font_path()
+    filt = build_animated_caption_filter("안녕 반가워요 오늘도", 4.0, font, str(tmp_path), "scene1")
+    assert filt.count("drawtext=") == 3
+
+
+def test_build_animated_caption_filter_last_word_state_persists_to_scene_end(tmp_path):
+    font = resolve_font_path()
+    filt = build_animated_caption_filter("안녕 반가워요", 4.0, font, str(tmp_path), "scene1")
+    assert "gte(t," in filt
 
 
 def test_pick_bgm_track_returns_none_when_dir_missing(tmp_path):

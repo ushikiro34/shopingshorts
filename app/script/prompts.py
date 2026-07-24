@@ -78,7 +78,7 @@ def _build_output_schema_example(needs_education: bool) -> dict:
         "tone": "생활팁",
         "scenes": [
             {"seq": 1, "narration": "...", "caption": "...", "image_index": 0, "duration_sec": 5},
-            {"seq": 2, "narration": "...", "caption": "...", "image_index": 0, "duration_sec": 5},
+            {"seq": 2, "narration": "...", "caption": "...", "image_index": 1, "duration_sec": 5},
         ],
         "disclosure": PARTNERS_DISCLOSURE,
         "estimated_duration_sec": 45,
@@ -116,6 +116,9 @@ def build_system_prompt(tone: str, needs_education: bool) -> str:
 - scenes 배열의 원소 개수는 반드시 3개 이상 8개 이하다. 9개 이상은 절대 금지. 5단계 구조를 scene 여러 개로
   나누더라도 총합이 8을 넘지 않게 통합하라 (예: problem+educational_note를 한 scene에 같이 담아도 된다).
 - narration을 모두 합친 영상 길이(estimated_duration_sec)는 30~45초.
+- scenes[].image_index는 0 이상 (user 메시지의 image_count - 1) 이하의 정수만 쓴다. 등장하는
+  이미지 여러 장을 씬마다 최대한 고르게 순환시켜 쓰고(예: image_count=4면 0,1,2,3,0,1,2,3),
+  image_count가 1이면 전부 0으로 둔다. 모든 씬을 0으로만 채우지 않는다(image_count>1일 때).
 - narration에는 리뷰 원문 문장을 그대로 옮기지 않는다 (재구성된 표현만 사용).
 - product 단계 narration에는 실제 상품명(user 메시지의 product_name 값)을 쓰지 않는다. "이 제품은"/"이 제품이" 등으로 지칭한다.
 - disclosure 필드에는 반드시 다음 문구를 정확히 그대로 넣는다: "{PARTNERS_DISCLOSURE}"
@@ -137,6 +140,7 @@ def build_user_prompt(
         "category": product.get("category"),
         "deeplink": product.get("deeplink"),
         "target_persona": target_persona,
+        "image_count": len(product.get("image_urls") or []) or 1,
         "analysis": analysis_json,
     }
     return json.dumps(payload, ensure_ascii=False, indent=2)

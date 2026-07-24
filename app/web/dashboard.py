@@ -270,7 +270,13 @@ def discover_tab(request: Request, selected: str | None = None, view: str = "lis
     latest_review_raw = ""
     if selected:
         found = [p for p in products if p["id"] == selected]
-        selected_product = found[0] if found else None
+        if found:
+            selected_product = found[0]
+        else:
+            # 상품선택 큐(발굴 단계)를 벗어난 상품이라도, 이전 단계로 돌아가 이미지 등
+            # 누락 데이터를 채우러 온 경우일 수 있으니 상태와 무관하게 직접 조회한다.
+            other = client.table("products").select("*").eq("id", selected).execute().data
+            selected_product = other[0] if other else None
         if selected_product:
             latest_review = (
                 client.table("reviews")
@@ -361,6 +367,61 @@ async def discover_extract_review_image(file: UploadFile = File(...)):
     return JSONResponse({"text": text})
 
 
+@router.get("/discover/{product_id}/image-candidates")
+def discover_image_candidates(product_id: str, keyword: str):
+    """네이버 쇼핑검색으로 후보 이미지 여러 개를 찾아 JS 피커에 보여준다 (JS fetch용)."""
+    from app.discovery.naver_search import NaverSearchError, search_product_images
+
+    try:
+        results = search_product_images(keyword)
+    except NaverSearchError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=502)
+    return JSONResponse({"candidates": [{"image": r.image, "title": r.title} for r in results if r.image]})
+
+
+@router.post("/discover/{product_id}/images/add")
+def discover_images_add(product_id: str, image_url: str = Form(...)):
+    """네이버 후보 중 고른 이미지 URL 하나를 products.image_urls에 추가한다."""
+    client = get_client()
+    product = client.table("products").select("image_urls").eq("id", product_id).execute().data[0]
+    image_urls = product.get("image_urls") or []
+    if image_url not in image_urls:
+        image_urls.append(image_url)
+        client.table("products").update({"image_urls": image_urls}).eq("id", product_id).execute()
+    return RedirectResponse(f"/discover?selected={product_id}&view=detail&toast=이미지를+추가했어요", status_code=302)
+
+
+@router.post("/discover/{product_id}/images/upload")
+async def discover_images_upload(product_id: str, file: UploadFile = File(...)):
+    """상품 이미지를 로컬 파일로 직접 업로드해 products.image_urls에 추가한다."""
+    client = get_client()
+    product = client.table("products").select("image_urls").eq("id", product_id).execute().data[0]
+    image_urls = product.get("image_urls") or []
+
+    ext = os.path.splitext(file.filename or "")[1] or ".jpg"
+    upload_dir = os.path.join("renders", "product_images", product_id)
+    os.makedirs(upload_dir, exist_ok=True)
+    filename = f"{len(image_urls)}_{int(datetime.now(timezone.utc).timestamp())}{ext}"
+    dest_path = os.path.join(upload_dir, filename)
+    with open(dest_path, "wb") as f:
+        f.write(await file.read())
+
+    url = "/" + dest_path.replace(os.sep, "/")
+    image_urls.append(url)
+    client.table("products").update({"image_urls": image_urls}).eq("id", product_id).execute()
+    return RedirectResponse(f"/discover?selected={product_id}&view=detail&toast=이미지를+업로드했어요", status_code=302)
+
+
+@router.post("/discover/{product_id}/images/remove")
+def discover_images_remove(product_id: str, image_url: str = Form(...)):
+    """상품 이미지 하나를 products.image_urls에서 제거한다."""
+    client = get_client()
+    product = client.table("products").select("image_urls").eq("id", product_id).execute().data[0]
+    image_urls = [u for u in (product.get("image_urls") or []) if u != image_url]
+    client.table("products").update({"image_urls": image_urls}).eq("id", product_id).execute()
+    return RedirectResponse(f"/discover?selected={product_id}&view=detail&toast=이미지를+삭제했어요", status_code=302)
+
+
 @router.post("/discover/{product_id}/analyze")
 def discover_analyze(
     request: Request,
@@ -433,7 +494,13 @@ def scripts_tab(request: Request, selected: str | None = None, view: str = "list
     latest_script = None
     if selected:
         found = [p for p in products if p["id"] == selected]
-        selected_product = found[0] if found else None
+        if found:
+            selected_product = found[0]
+        else:
+            # 대본작성 큐를 벗어난 상품(이전/다음 단계 이동)도 대본을 다시 확인·수정하러
+            # 돌아올 수 있으니 상태와 무관하게 직접 조회한다.
+            other = client.table("products").select("*").eq("id", selected).execute().data
+            selected_product = other[0] if other else None
         if selected_product:
             scripts = (
                 client.table("scripts")
@@ -547,7 +614,13 @@ def media_tab(request: Request, selected: str | None = None, view: str = "list")
     disclosure_ok = deeplink_ok = False
     if selected:
         found = [p for p in products if p["id"] == selected]
-        selected_product = found[0] if found else None
+        if found:
+            selected_product = found[0]
+        else:
+            # 미디어제작 큐를 벗어난 상품(이전 단계로 돌아가 대본/이미지를 고치고 온 경우)도
+            # 진행 상황을 다시 확인할 수 있어야 하니 상태와 무관하게 직접 조회한다.
+            other = client.table("products").select("*").eq("id", selected).execute().data
+            selected_product = other[0] if other else None
         if selected_product:
             scripts = client.table("scripts").select("*").eq("product_id", selected).order("created_at", desc=True).limit(1).execute().data
             script = scripts[0] if scripts else None
@@ -647,11 +720,14 @@ def publish_tab(request: Request, selected: str | None = None, view: str = "list
     render_job = None
     thumbnail = None
     remaining_minutes = 0
+    product_id = None
     if selected:
         found = [i for i in items if i["id"] == selected]
         selected_item = found[0] if found else None
         if selected_item:
             render_job = client.table("render_jobs").select("*").eq("id", selected_item["render_job_id"]).execute().data[0]
+            script = client.table("scripts").select("product_id").eq("id", render_job["script_id"]).execute().data
+            product_id = script[0]["product_id"] if script else None
             if selected_item.get("thumbnail_id"):
                 thumbs = client.table("thumbnails").select("*").eq("id", selected_item["thumbnail_id"]).execute().data
                 thumbnail = thumbs[0] if thumbs else None
@@ -667,6 +743,7 @@ def publish_tab(request: Request, selected: str | None = None, view: str = "list
             "render_job": render_job,
             "thumbnail": thumbnail,
             "remaining_minutes": remaining_minutes,
+            "product_id": product_id,
             "view": view if selected_item else "list",
         }
     )

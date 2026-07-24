@@ -32,8 +32,7 @@ class NaverProductResult:
     lprice: int | None
 
 
-def search_product_image(keyword: str) -> NaverProductResult | None:
-    """상품명으로 검색해 가장 적합도 높은 결과 1건을 반환한다. 검색 결과가 없으면 None."""
+def _search_items(keyword: str, display: int) -> list[dict]:
     if not NAVER_CLIENT_ID or not NAVER_CLIENT_SECRET:
         raise NaverSearchError("NAVER_CLIENT_ID / NAVER_CLIENT_SECRET이 설정되지 않았습니다.")
 
@@ -41,7 +40,7 @@ def search_product_image(keyword: str) -> NaverProductResult | None:
         "X-Naver-Client-Id": NAVER_CLIENT_ID,
         "X-Naver-Client-Secret": NAVER_CLIENT_SECRET,
     }
-    params = {"query": keyword, "display": 1, "sort": "sim"}
+    params = {"query": keyword, "display": display, "sort": "sim"}
 
     last_error: Exception | None = None
     for attempt in range(2):  # 최초 시도 + 재시도 1회 (AGENTS.md 코딩 컨벤션)
@@ -52,20 +51,31 @@ def search_product_image(keyword: str) -> NaverProductResult | None:
                 raise NaverSearchError(
                     f"네이버 쇼핑검색 API 오류 (status={response.status_code}): {response.text[:300]}"
                 )
-            data = response.json()
-            items = data.get("items") or []
-            if not items:
-                return None
-            item = items[0]
-            return NaverProductResult(
-                title=_TAG_RE.sub("", item.get("title", "")),
-                image=item.get("image") or None,
-                link=item.get("link") or None,
-                lprice=int(item["lprice"]) if item.get("lprice") else None,
-            )
+            return response.json().get("items") or []
         except (httpx.HTTPError, NaverSearchError) as exc:
             last_error = exc
             if attempt == 0:
                 time.sleep(0.5)
                 continue
     raise NaverSearchError(f"네이버 쇼핑검색 API 호출 실패: {last_error}") from last_error
+
+
+def _to_result(item: dict) -> NaverProductResult:
+    return NaverProductResult(
+        title=_TAG_RE.sub("", item.get("title", "")),
+        image=item.get("image") or None,
+        link=item.get("link") or None,
+        lprice=int(item["lprice"]) if item.get("lprice") else None,
+    )
+
+
+def search_product_image(keyword: str) -> NaverProductResult | None:
+    """상품명으로 검색해 가장 적합도 높은 결과 1건을 반환한다. 검색 결과가 없으면 None."""
+    items = _search_items(keyword, display=1)
+    return _to_result(items[0]) if items else None
+
+
+def search_product_images(keyword: str, count: int = 8) -> list[NaverProductResult]:
+    """상품명으로 검색해 후보 이미지 여러 개를 반환한다 — 사용자가 고를 이미지를 직접 고르게 한다."""
+    items = _search_items(keyword, display=count)
+    return [_to_result(item) for item in items]

@@ -75,12 +75,30 @@ def escape_path_for_filter(path: str) -> str:
     return escaped
 
 
-def build_zoompan_filter(duration_sec: float, fps: int = FPS) -> str:
-    """Ken Burns 줌 효과 filter 문자열을 만든다."""
+# 항상 x=0,y=0(기본값)이면 확대할수록 좌상단에 고정된 채 나머지가 우하단으로 빠져나가는
+# 느낌만 나서 모든 씬의 이동 방향이 똑같아 보였다 — 씬마다 이 중 하나를 랜덤으로 골라 다양한
+# 방향으로 팬 되게 한다. zoompan 표현식에서 iw/ih는 입력(스케일된) 프레임 크기를 가리킨다.
+ZOOM_PAN_DIRECTIONS: dict[str, tuple[str, str]] = {
+    "top_left": ("0", "0"),
+    "top_right": ("iw-iw/zoom", "0"),
+    "bottom_left": ("0", "ih-ih/zoom"),
+    "bottom_right": ("iw-iw/zoom", "ih-ih/zoom"),
+    "center": ("iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"),
+}
+
+
+def build_zoompan_filter(duration_sec: float, fps: int = FPS, pan: str | None = None) -> str:
+    """Ken Burns 줌 효과 filter 문자열을 만든다.
+
+    pan을 지정하지 않으면 ZOOM_PAN_DIRECTIONS 중 하나를 랜덤으로 고른다(테스트 등에서
+    특정 방향을 고정하고 싶으면 pan에 키 이름을 넘기면 된다).
+    """
     frames = max(int(round(duration_sec * fps)), 1)
+    direction = pan or random.choice(list(ZOOM_PAN_DIRECTIONS))
+    x_expr, y_expr = ZOOM_PAN_DIRECTIONS[direction]
     return (
         f"scale={WIDTH * 2}:{HEIGHT * 2},"
-        f"zoompan=z='min(zoom+0.0006,1.15)':d={frames}:s={WIDTH}x{HEIGHT}:fps={fps},setsar=1"
+        f"zoompan=z='min(zoom+0.0006,1.15)':x='{x_expr}':y='{y_expr}':d={frames}:s={WIDTH}x{HEIGHT}:fps={fps},setsar=1"
     )
 
 
@@ -101,7 +119,10 @@ def build_text_block_filter(
     """
     escaped_font = escape_path_for_filter(font_path)
     box_height = line_height * len(line_paths) + box_padding * 2
-    box_top = f"h-{bottom_margin}-{box_height}"
+    # drawbox 표현식 안에서 h는 (이 필터가 그리는) 박스 자신의 높이를 가리키고, 프레임 높이는
+    # ih(input height)다 — 여기 h를 썼던 탓에 자막 배경 박스가 화면에 전혀 안 보이던 버그가
+    # 있었다(drawtext는 반대로 h가 프레임 높이라 텍스트 자체는 정상 위치에 있었다).
+    box_top = f"ih-{bottom_margin}-{box_height}"
 
     enable_suffix = f":enable='{enable}'" if enable else ""
     filters = [f"drawbox=x=0:y={box_top}:w=iw:h={box_height}:color=black@0.55:t=fill{enable_suffix}"]
@@ -116,17 +137,93 @@ def build_text_block_filter(
     return ",".join(filters)
 
 
+def estimate_word_timings(text: str, duration_sec: float) -> list[tuple[str, float, float]]:
+    """단어별 (start, end) 등장 시각을 글자 수 비례로 추정한다.
+
+    edge-tts 한국어 보이스는 SentenceBoundary만 주고 WordBoundary(단어 단위 타임스탬프)를
+    안 준다(실측 확인됨) — ElevenLabs 등 실제 타임스탬프 API로 교체하기 전까지 쓰는 근사치다.
+    실제 발화 속도와 100% 일치하진 않지만, 자막이 통째로 뜨는 것보다는 훨씬 역동적으로 보인다.
+    """
+    words = text.split()
+    if not words:
+        return []
+    weights = [len(w) for w in words]
+    total_weight = sum(weights) or 1
+    timings = []
+    t = 0.0
+    for word, weight in zip(words, weights):
+        span = duration_sec * weight / total_weight
+        timings.append((word, t, t + span))
+        t += span
+    return timings
+
+
+def build_animated_caption_filter(
+    text: str,
+    duration_sec: float,
+    font_path: str,
+    work_dir: str,
+    basename: str,
+    bottom_margin: int = CAPTION_BOTTOM_MARGIN,
+    fontsize: int = CAPTION_FONTSIZE,
+    max_width_px: int = CAPTION_MAX_WIDTH,
+    line_height: int = TEXT_LINE_HEIGHT,
+    box_padding: int = TEXT_BOX_PADDING,
+) -> str:
+    """자막을 통째로 보여주는 대신, estimate_word_timings로 추정한 시각마다 단어를 한 개씩
+    누적해서 드러내는(타자기/노래방 자막 느낌) filtergraph 조각을 만든다.
+
+    줄바꿈은 wrap_text_lines로 완성 문장 기준 미리 계산해 고정한다 — 단어가 늘어날 때마다
+    다시 줄바꿈하면 박스 높이/줄 위치가 흔들리기 때문에, 각 줄에 속할 단어를 먼저 정하고
+    그 줄 안에서만 단어를 누적한다.
+    """
+    escaped_font = escape_path_for_filter(font_path)
+    lines = wrap_text_lines(text, font_path, fontsize, max_width_px)
+    box_height = line_height * len(lines) + box_padding * 2
+    box_top = f"ih-{bottom_margin}-{box_height}"
+
+    filters = [f"drawbox=x=0:y={box_top}:w=iw:h={box_height}:color=black@0.55:t=fill"]
+    word_timings = estimate_word_timings(text, duration_sec)
+
+    word_cursor = 0
+    for line_i, line in enumerate(lines):
+        line_words = line.split()
+        # drawtext에서는 (drawbox와 반대로) h가 이미 프레임 높이를 가리킨다 — ih를 쓰면 안 된다.
+        y = f"h-{bottom_margin}-{box_height}+{box_padding + line_i * line_height}"
+        for reveal_count in range(1, len(line_words) + 1):
+            state_index = word_cursor + reveal_count - 1
+            start = word_timings[state_index][1] if state_index < len(word_timings) else 0.0
+            if reveal_count < len(line_words):
+                next_start = word_timings[state_index + 1][1]
+                enable = f"between(t,{start:.3f},{next_start:.3f})"
+            else:
+                # 이 줄의 마지막 단어까지 나온 뒤로는(다른 줄이 이어서 채워지는 동안에도)
+                # 씬이 끝날 때까지 그대로 남아 있어야 한다.
+                enable = f"gte(t,{start:.3f})"
+            partial_text = " ".join(line_words[:reveal_count])
+            path = os.path.join(work_dir, f"{basename}.caption.line{line_i}.w{reveal_count}.txt")
+            _write_text_file(partial_text, path)
+            escaped_text = escape_path_for_filter(path)
+            filters.append(
+                f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor=white:"
+                f"fontsize={fontsize}:x=(w-text_w)/2:y={y}:text_shaping=0:enable='{enable}'"
+            )
+        word_cursor += len(line_words)
+    return ",".join(filters)
+
+
 def build_scene_filter_complex(
     duration_sec: float,
-    caption_line_paths: list[str],
+    caption_text: str,
     font_path: str,
+    work_dir: str,
+    basename: str,
     disclosure_line_paths: list[str] | None = None,
 ) -> str:
-    """이미지 한 장을 Ken Burns + 자막(+ 마지막 씬은 고지 오버레이)까지 입힌 filter_complex를 만든다."""
+    """이미지 한 장을 Ken Burns + 단어별 등장 자막(+ 마지막 씬은 고지 오버레이)까지 입힌
+    filter_complex를 만든다."""
     zoompan = build_zoompan_filter(duration_sec)
-    caption_block = build_text_block_filter(
-        caption_line_paths, font_path, bottom_margin=CAPTION_BOTTOM_MARGIN, fontsize=CAPTION_FONTSIZE
-    )
+    caption_block = build_animated_caption_filter(caption_text, duration_sec, font_path, work_dir, basename)
 
     if disclosure_line_paths is None:
         # JPEG 소스는 풀레인지(yuvj420p)로 디코딩되기 쉬워 명시적으로 yuv420p(리미티드 레인지)로
@@ -218,9 +315,6 @@ def render_scene_clip(
     # output_path 기반으로 고유 파일명을 만든다 — 여러 씬이 같은 work_dir을 공유할 때
     # 고정 파일명을 쓰면 다음 씬이 이전 씬의 캡션 파일을 덮어써버린다.
     basename = os.path.splitext(os.path.basename(output_path))[0]
-    caption_paths = _write_lines(
-        caption_text, work_dir, f"{basename}.caption", active_font, CAPTION_FONTSIZE, CAPTION_MAX_WIDTH
-    )
     disclosure_paths = None
     if disclosure_text:
         disclosure_paths = _write_lines(
@@ -232,7 +326,9 @@ def render_scene_clip(
             DISCLOSURE_MAX_WIDTH,
         )
 
-    filter_complex = build_scene_filter_complex(duration_sec, caption_paths, active_font, disclosure_paths)
+    filter_complex = build_scene_filter_complex(
+        duration_sec, caption_text, active_font, work_dir, basename, disclosure_paths
+    )
 
     run_ffmpeg(
         [

@@ -93,6 +93,11 @@
   </div>
 
   <div class="panel action-panel">
+    {% if selected %}
+    <div class="prev-stage-section">
+      <a class="prev-stage-link" href="/discover?selected={{ selected.id }}&view=detail">← 상품선택으로 (이미지/리뷰 수정)</a>
+    </div>
+    {% endif %}
     <form method="post" action="/scripts/{{ selected.id if selected else '' }}/generate" id="script-generate-form">
       <div class="card-field">
         <label>톤 선택</label>
@@ -144,7 +149,8 @@
     wireSubmitSpinner("script-approve-form", "script-approve-btn", "승인하는 중...");
 
     var editBtn = document.getElementById("script-edit-btn");
-    if (editBtn && !editBtn.disabled) {
+    var editForm = document.getElementById("script-edit-form");
+    if (editBtn && editForm && !editBtn.disabled) {
       var displays = document.querySelectorAll("#script-edit-form .script-cell-display");
       var textareas = document.querySelectorAll("#script-edit-form .script-cell");
       var editing = false;
@@ -156,11 +162,16 @@
           textareas.forEach(function (t) { t.hidden = false; t.readOnly = false; });
           if (textareas[0]) textareas[0].focus();
           editBtn.querySelector(".btn-label").textContent = "적용";
-        } else {
-          editBtn.disabled = true;
-          var spinner = editBtn.querySelector(".btn-spinner");
-          if (spinner) spinner.hidden = false;
         }
+        // 두 번째 클릭("적용")은 preventDefault 하지 않고 그대로 제출시킨다 — 로딩 처리는
+        // 아래 form의 submit 이벤트에서 한다. 이 클릭 핸들러 안에서 곧바로 버튼을
+        // disabled 처리하면 브라우저가 지금 이 클릭의 기본 제출 동작 자체를 취소해버려서
+        // 폼이 영영 제출되지 않고 로딩만 계속되는 버그가 있었다.
+      });
+      editForm.addEventListener("submit", function () {
+        editBtn.disabled = true;
+        var spinner = editBtn.querySelector(".btn-spinner");
+        if (spinner) spinner.hidden = false;
       });
     }
   });

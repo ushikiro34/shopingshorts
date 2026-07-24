@@ -30,6 +30,15 @@ class ImageFetchError(RuntimeError):
 
 
 def download_image(url: str) -> bytes:
+    if not url.startswith("http://") and not url.startswith("https://"):
+        # 직접 업로드한 이미지(/renders/product_images/...) — 서버가 떠 있지 않아도
+        # 워커가 같은 파일시스템에서 바로 읽을 수 있게 HTTP 왕복 없이 로컬 파일로 처리한다.
+        try:
+            with open(url.lstrip("/"), "rb") as f:
+                return f.read()
+        except OSError as exc:
+            raise ImageFetchError(f"로컬 이미지 파일을 읽을 수 없습니다: {url} ({exc})") from exc
+
     last_error: Exception | None = None
     for attempt in range(2):  # 최초 시도 + 재시도 1회 (AGENTS.md 코딩 컨벤션)
         try:

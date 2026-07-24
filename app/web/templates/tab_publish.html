@@ -42,6 +42,11 @@
   </div>
 
   <div class="panel action-panel">
+    {% if selected and product_id %}
+    <div class="prev-stage-section">
+      <a class="prev-stage-link" href="/media?selected={{ product_id }}&view=detail">← 미디어제작으로</a>
+    </div>
+    {% endif %}
     {% if selected %}
       {% if selected.status == 'pending_review' %}
         <div class="cooldown">냉각 중 · 약 {{ remaining_minutes }}분 남음</div>
