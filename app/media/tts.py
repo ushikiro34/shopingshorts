@@ -15,6 +15,7 @@ scene별 내레이션을 mp3로 생성하고, ffprobe로 실제 길이를 측정
 from __future__ import annotations
 
 import asyncio
+import base64
 import subprocess
 import time
 
@@ -30,9 +31,37 @@ from app.config import (
 ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1/text-to-speech"
 ELEVENLABS_MODEL_ID = "eleven_multilingual_v2"
 
+WordTiming = tuple[str, float, float]
+
 
 class TTSError(RuntimeError):
     """TTS 생성/길이 측정 실패를 감싸는 명확한 예외."""
+
+
+def _group_word_timings(alignment: dict) -> list[WordTiming]:
+    """ElevenLabs의 글자 단위 정렬 데이터를 단어 단위 (word, start, end) 리스트로 묶는다."""
+    chars = alignment.get("characters") or []
+    starts = alignment.get("character_start_times_seconds") or []
+    ends = alignment.get("character_end_times_seconds") or []
+
+    words: list[WordTiming] = []
+    word = ""
+    word_start: float | None = None
+    word_end: float | None = None
+    for ch, start, end in zip(chars, starts, ends):
+        if ch.isspace():
+            if word:
+                words.append((word, word_start, word_end))
+                word = ""
+                word_start = None
+        else:
+            if word_start is None:
+                word_start = start
+            word += ch
+            word_end = end
+    if word:
+        words.append((word, word_start, word_end))
+    return words
 
 
 def _synthesize_with_elevenlabs(
@@ -40,23 +69,32 @@ def _synthesize_with_elevenlabs(
     output_path: str,
     voice_id: str | None = None,
     client: httpx.Client | None = None,
-) -> str:
+) -> tuple[str, list[WordTiming] | None]:
+    """ElevenLabs로 합성한다. /with-timestamps 엔드포인트를 써서 실제 단어별 타이밍도
+    함께 받아온다 — edge-tts(문장 단위만 지원)와 달리 자막을 실제 발화에 정확히 맞출 수 있다.
+    """
     active_voice_id = voice_id or ELEVENLABS_VOICE_ID
     if not ELEVENLABS_API_KEY:
         raise TTSError("ELEVENLABS_API_KEY가 설정되지 않았습니다.")
     if not active_voice_id:
         raise TTSError("ELEVENLABS_VOICE_ID가 설정되지 않았습니다.")
 
-    url = f"{ELEVENLABS_BASE_URL}/{active_voice_id}"
+    url = f"{ELEVENLABS_BASE_URL}/{active_voice_id}/with-timestamps"
     headers = {
         "xi-api-key": ELEVENLABS_API_KEY,
         "Content-Type": "application/json",
-        "Accept": "audio/mpeg",
     }
     body = {
         "text": text,
         "model_id": ELEVENLABS_MODEL_ID,
-        "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+        # stability를 낮추고 style을 살짝 줘서 억양 기복이 있는 더 자연스러운 낭독 톤으로
+        # 조정했다(기존 stability=0.5/style 없음은 다소 단조롭게 들렸다).
+        "voice_settings": {
+            "stability": 0.45,
+            "similarity_boost": 0.8,
+            "style": 0.35,
+            "use_speaker_boost": True,
+        },
     }
 
     last_error: Exception | None = None
@@ -69,10 +107,13 @@ def _synthesize_with_elevenlabs(
                     response = default_client.post(url, headers=headers, json=body)
             if response.status_code >= 400:
                 raise TTSError(f"ElevenLabs TTS 오류 (status={response.status_code}): {response.text[:300]}")
+            data = response.json()
+            audio_bytes = base64.b64decode(data["audio_base64"])
             with open(output_path, "wb") as f:
-                f.write(response.content)
-            return output_path
-        except (httpx.HTTPError, TTSError) as exc:
+                f.write(audio_bytes)
+            word_timings = _group_word_timings(data.get("alignment") or {}) or None
+            return output_path, word_timings
+        except (httpx.HTTPError, TTSError, KeyError, ValueError) as exc:
             last_error = exc
             if attempt == 0:
                 time.sleep(0.5)
@@ -111,6 +152,28 @@ def _synthesize_with_edge(
     raise TTSError(f"edge-tts 생성 실패: {last_error}") from last_error
 
 
+def _synthesize_scene_audio_with_timings(
+    text: str,
+    output_path: str,
+    voice_id: str | None = None,
+    client: httpx.Client | None = None,
+    provider: str | None = None,
+    communicate_factory=None,
+) -> tuple[str, list[WordTiming] | None]:
+    """provider별 합성을 실행하고 (경로, 단어별 타이밍) 튜플로 통일해서 돌려준다.
+
+    edge-tts는 단어 타이밍을 안 주므로 항상 None — 호출부(render.py)가 이 경우
+    글자 수 비례 추정치(estimate_word_timings)로 대체한다.
+    """
+    active_provider = provider or TTS_PROVIDER
+    if active_provider == "edge":
+        path = _synthesize_with_edge(text, output_path, voice=voice_id, communicate_factory=communicate_factory)
+        return path, None
+    if active_provider == "elevenlabs":
+        return _synthesize_with_elevenlabs(text, output_path, voice_id=voice_id, client=client)
+    raise TTSError(f"알 수 없는 TTS_PROVIDER: {active_provider!r} (elevenlabs 또는 edge만 지원)")
+
+
 def synthesize_scene_audio(
     text: str,
     output_path: str,
@@ -124,12 +187,10 @@ def synthesize_scene_audio(
     provider가 없으면 app.config.TTS_PROVIDER를 따른다. voice_id는 공급자별 의미가
     다르다(ElevenLabs: voice_id, edge: "ko-KR-SunHiNeural" 같은 보이스 이름).
     """
-    active_provider = provider or TTS_PROVIDER
-    if active_provider == "edge":
-        return _synthesize_with_edge(text, output_path, voice=voice_id, communicate_factory=communicate_factory)
-    if active_provider == "elevenlabs":
-        return _synthesize_with_elevenlabs(text, output_path, voice_id=voice_id, client=client)
-    raise TTSError(f"알 수 없는 TTS_PROVIDER: {active_provider!r} (elevenlabs 또는 edge만 지원)")
+    path, _ = _synthesize_scene_audio_with_timings(
+        text, output_path, voice_id=voice_id, client=client, provider=provider, communicate_factory=communicate_factory
+    )
+    return path
 
 
 def get_audio_duration_sec(path: str) -> float:
@@ -159,15 +220,16 @@ def synthesize_script_audio(
     provider: str | None = None,
     communicate_factory=None,
 ) -> list[dict]:
-    """scenes 각각을 mp3로 합성하고 실측 길이를 붙여 반환한다.
+    """scenes 각각을 mp3로 합성하고 실측 길이 + (있으면) 단어별 타이밍을 붙여 반환한다.
 
-    반환값: [{"seq": int, "path": str, "duration_sec": float}, ...]
+    반환값: [{"seq": int, "path": str, "duration_sec": float, "word_timings": list | None}, ...]
+    word_timings는 ElevenLabs일 때만 채워진다(edge-tts는 단어 단위 타임스탬프 미지원).
     """
     results = []
     for scene in scenes:
         seq = scene["seq"]
         output_path = f"{output_dir}/scene_{seq}.mp3"
-        synthesize_scene_audio(
+        _, word_timings = _synthesize_scene_audio_with_timings(
             scene["narration"],
             output_path,
             voice_id=voice_id,
@@ -176,5 +238,5 @@ def synthesize_script_audio(
             communicate_factory=communicate_factory,
         )
         duration = get_audio_duration_sec(output_path)
-        results.append({"seq": seq, "path": output_path, "duration_sec": duration})
+        results.append({"seq": seq, "path": output_path, "duration_sec": duration, "word_timings": word_timings})
     return results

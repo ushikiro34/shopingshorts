@@ -133,6 +133,17 @@ def test_build_animated_caption_filter_last_word_state_persists_to_scene_end(tmp
     assert "gte(t," in filt
 
 
+def test_build_animated_caption_filter_uses_provided_word_timings_instead_of_estimate(tmp_path):
+    # ElevenLabs 실측 타이밍을 넘기면 글자 수 추정치 대신 그 값을 그대로 써야 한다.
+    font = resolve_font_path()
+    real_timings = [("안녕", 0.0, 5.0), ("반가워요", 5.0, 9.0)]
+    filt = build_animated_caption_filter(
+        "안녕 반가워요", 9.0, font, str(tmp_path), "scene1", word_timings=real_timings
+    )
+    assert "between(t,0.000,5.000)" in filt
+    assert "gte(t,5.000)" in filt
+
+
 def test_pick_bgm_track_returns_none_when_dir_missing(tmp_path):
     missing_dir = str(tmp_path / "no_such_dir")
     assert pick_bgm_track(missing_dir) is None

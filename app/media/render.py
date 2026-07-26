@@ -23,6 +23,10 @@ HEIGHT = 1920
 FPS = 30
 BGM_VOLUME_DB = -18
 DISCLOSURE_OVERLAY_SEC = 2
+# 기본 libx264 설정(대략 crf 23/medium)은 화질이 다소 무르게 나온다 — 자막 글자가 많은
+# 영상 특성상 더 낮은 crf(고화질)+slow 프리셋으로 인코딩 품질을 올렸다. 씬 클립이 짧아서
+# (몇 초) 느려진 프리셋으로 인한 전체 처리 시간 증가는 감내할 만하다고 판단.
+VIDEO_ENCODE_ARGS = ["-c:v", "libx264", "-preset", "slow", "-crf", "18"]
 
 CAPTION_FONTSIZE = 60
 CAPTION_BOTTOM_MARGIN = 360
@@ -37,6 +41,8 @@ DISCLOSURE_BOTTOM_MARGIN = 140
 DISCLOSURE_MAX_WIDTH = int(WIDTH * 0.90)
 TEXT_LINE_HEIGHT = 70
 TEXT_BOX_PADDING = 24
+# 단어가 나타날 때 뚝 끊기지 않고 살짝 "팝"되는 느낌을 주는 짧은 페이드인 시간.
+CAPTION_POP_FADE_SEC = 0.12
 
 # Phase 4에서 Docker 이미지에 라이선스가 명확한 한글 폰트(예: Nanum Gothic, SIL OFL)를
 # assets/fonts/에 번들할 예정. 그 전까지는 로컬 개발 환경의 시스템 폰트를 폴백으로 쓴다.
@@ -174,9 +180,15 @@ def build_animated_caption_filter(
     max_width_px: int = CAPTION_MAX_WIDTH,
     line_height: int = TEXT_LINE_HEIGHT,
     box_padding: int = TEXT_BOX_PADDING,
+    word_timings: list[tuple[str, float, float]] | None = None,
 ) -> str:
-    """자막을 통째로 보여주는 대신, estimate_word_timings로 추정한 시각마다 단어를 한 개씩
+    """자막을 통째로 보여주는 대신, 단어가 실제(또는 추정) 등장하는 시각마다 한 개씩
     누적해서 드러내는(타자기/노래방 자막 느낌) filtergraph 조각을 만든다.
+
+    word_timings를 넘기면(ElevenLabs의 실제 단어별 타임스탬프) 그걸 그대로 쓰고, 없으면
+    estimate_word_timings로 글자 수 비례 추정치를 쓴다. word_timings를 쓸 때 text는 반드시
+    그 타이밍을 계산한 원문(나레이션)과 같은 문자열이어야 한다 — 단어 개수/순서가 어긋나면
+    자막이 엉뚱한 타이밍에 나온다.
 
     줄바꿈은 wrap_text_lines로 완성 문장 기준 미리 계산해 고정한다 — 단어가 늘어날 때마다
     다시 줄바꿈하면 박스 높이/줄 위치가 흔들리기 때문에, 각 줄에 속할 단어를 먼저 정하고
@@ -188,7 +200,8 @@ def build_animated_caption_filter(
     box_top = f"ih-{bottom_margin}-{box_height}"
 
     filters = [f"drawbox=x=0:y={box_top}:w=iw:h={box_height}:color=black@0.55:t=fill"]
-    word_timings = estimate_word_timings(text, duration_sec)
+    if word_timings is None:
+        word_timings = estimate_word_timings(text, duration_sec)
 
     word_cursor = 0
     for line_i, line in enumerate(lines):
@@ -209,9 +222,12 @@ def build_animated_caption_filter(
             path = os.path.join(work_dir, f"{basename}.caption.line{line_i}.w{reveal_count}.txt")
             _write_text_file(partial_text, path)
             escaped_text = escape_path_for_filter(path)
+            # 단어가 막 나타난 순간(t=start)엔 alpha=0이었다가 CAPTION_POP_FADE_SEC 동안
+            # 1로 올라간다 — enable로 켜지는 순간 뚝 나타나는 대신 살짝 팝인되는 느낌.
+            alpha = f"min((t-{start:.3f})/{CAPTION_POP_FADE_SEC},1)"
             filters.append(
                 f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor={CAPTION_TEXT_COLOR}:"
-                f"bordercolor={CAPTION_OUTLINE_COLOR}:borderw={CAPTION_OUTLINE_WIDTH}:"
+                f"bordercolor={CAPTION_OUTLINE_COLOR}:borderw={CAPTION_OUTLINE_WIDTH}:alpha='{alpha}':"
                 f"fontsize={fontsize}:x=(w-text_w)/2:y={y}:text_shaping=0:enable='{enable}'"
             )
         word_cursor += len(line_words)
@@ -254,11 +270,14 @@ def build_scene_filter_complex(
     disclosure_line_paths: list[str] | None = None,
     hook_text: str | None = None,
     has_icon: bool = False,
+    word_timings: list[tuple[str, float, float]] | None = None,
 ) -> str:
     """이미지 한 장을 Ken Burns + 단어별 등장 자막(+ 첫 씬은 상단 후킹 문구, 마지막 씬은
     아이콘 오버레이 + 고지 오버레이)까지 입힌 filter_complex를 만든다."""
     zoompan = build_zoompan_filter(duration_sec)
-    caption_block = build_animated_caption_filter(caption_text, duration_sec, font_path, work_dir, basename)
+    caption_block = build_animated_caption_filter(
+        caption_text, duration_sec, font_path, work_dir, basename, word_timings=word_timings
+    )
     hook_block = build_hook_text_filter(hook_text, font_path, work_dir, basename) if hook_text else None
 
     stage = f"[0:v]{zoompan}[zoomed];[zoomed]{caption_block}"
@@ -344,6 +363,15 @@ def run_ffmpeg(args: list[str]) -> None:
         raise RenderError("ffmpeg 실행 파일을 찾을 수 없습니다.") from exc
 
 
+def pad_audio_with_silence(audio_path: str, gap_sec: float, output_path: str) -> str:
+    """오디오 끝에 무음을 이어붙인다 — 씬 사이 나레이션이 곧바로 이어져 부자연스럽던 문제를
+    해결하기 위해, 각 씬 오디오 뒤에 짧은 무음 구간을 넣어 다음 씬으로 넘어가기 전 숨 고를
+    틈을 만든다(씬 전환은 크로스페이드로 자연스럽게 겹치지만, 그 겹침 구간이 이 무음
+    구간과 맞물리게 해서 실제 목소리끼리는 겹치지 않는다)."""
+    run_ffmpeg(["-i", audio_path, "-af", f"apad=pad_dur={gap_sec}", output_path])
+    return output_path
+
+
 def render_scene_clip(
     image_path: str,
     audio_path: str,
@@ -355,6 +383,7 @@ def render_scene_clip(
     disclosure_text: str | None = None,
     hook_text: str | None = None,
     icon_path: str | None = None,
+    word_timings: list[tuple[str, float, float]] | None = None,
 ) -> str:
     """이미지+오디오 한 씬을 Ken Burns+자막(+고지+아이콘)까지 입힌 mp4 클립으로 렌더링한다."""
     active_font = font_path or resolve_font_path()
@@ -374,7 +403,7 @@ def render_scene_clip(
 
     filter_complex = build_scene_filter_complex(
         duration_sec, caption_text, active_font, work_dir, basename, disclosure_paths, hook_text,
-        has_icon=bool(icon_path),
+        has_icon=bool(icon_path), word_timings=word_timings,
     )
 
     inputs = ["-loop", "1", "-i", image_path, "-i", audio_path]
@@ -386,7 +415,7 @@ def render_scene_clip(
             *inputs,
             "-filter_complex", filter_complex,
             "-map", "[outv]", "-map", "1:a",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-color_range", "tv", "-r", str(FPS),
+            *VIDEO_ENCODE_ARGS, "-pix_fmt", "yuv420p", "-color_range", "tv", "-r", str(FPS),
             "-t", str(duration_sec),
             "-c:a", "aac", "-shortest",
             output_path,
@@ -461,7 +490,7 @@ def concat_clips_with_transitions(
             *inputs,
             "-filter_complex", filter_complex,
             "-map", f"[{v_label}]", "-map", f"[{a_label}]",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-color_range", "tv", "-r", str(FPS),
+            *VIDEO_ENCODE_ARGS, "-pix_fmt", "yuv420p", "-color_range", "tv", "-r", str(FPS),
             "-c:a", "aac",
             output_path,
         ]

@@ -19,6 +19,7 @@ from app.media.render import (
     RenderError,
     concat_clips_with_transitions,
     mix_bgm,
+    pad_audio_with_silence,
     pick_bgm_track,
     render_scene_clip,
     resolve_font_path,
@@ -26,6 +27,10 @@ from app.media.render import (
 from app.media.tts import TTSError, synthesize_script_audio
 
 WORK_ROOT_DEFAULT = "renders"
+# 씬(단락)이 곧바로 이어져 나레이션이 부자연스럽던 문제 — 각 씬 사이에 숨 고를 무음
+# 구간을 넣는다. 크로스페이드 전환 시간(TRANSITION_DURATION_SEC=0.4)보다 커야 실제
+# 목소리끼리 겹치지 않는다.
+SCENE_GAP_SEC = 1.0
 
 
 def _now_iso() -> str:
@@ -110,18 +115,36 @@ def render_script(
     for scene in scenes:
         seq = scene["seq"]
         clip_path = os.path.join(work_dir, f"clip_{seq}.mp4")
-        duration = audio_by_seq[seq]["duration_sec"]
+        raw_duration = audio_by_seq[seq]["duration_sec"]
+        audio_path = audio_by_seq[seq]["path"]
+        word_timings = audio_by_seq[seq].get("word_timings")
+
+        if seq == last_seq:
+            duration = raw_duration
+        else:
+            # 마지막 씬 뒤엔 이어질 나레이션이 없으니 패딩할 필요가 없다. 그 앞 씬들은
+            # 끝에 무음을 붙여서, 다음 씬 목소리와 곧바로 이어붙지 않고 숨 고를 틈을 준다.
+            padded_path = os.path.join(work_dir, f"scene_{seq}_padded.mp3")
+            audio_path = pad_audio_with_silence(audio_path, SCENE_GAP_SEC, padded_path)
+            duration = raw_duration + SCENE_GAP_SEC
+
+        # 실제 단어별 타임스탬프(ElevenLabs)가 있으면, 그걸 계산한 원문인 나레이션을 그대로
+        # 자막으로 보여준다 — 짧게 각색된 caption 문구엔 이 타이밍을 그대로 적용할 수 없다
+        # (단어 구성 자체가 달라서). 실측 타이밍이 없으면(edge-tts) 기존처럼 caption +
+        # 글자 수 비례 추정치를 쓴다.
+        caption_source = scene["narration"] if word_timings else scene["caption"]
         render_scene_clip(
             image_paths[seq],
-            audio_by_seq[seq]["path"],
+            audio_path,
             duration,
-            scene["caption"],
+            caption_source,
             clip_path,
             work_dir,
             font_path=font,
             disclosure_text=script_json["disclosure"] if seq == last_seq else None,
             hook_text=scene["caption"] if seq == first_seq else None,
             icon_path=icon_path if seq == last_seq else None,
+            word_timings=word_timings,
         )
         clip_paths.append(clip_path)
         clip_durations.append(duration)

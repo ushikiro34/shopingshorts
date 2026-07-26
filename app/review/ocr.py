@@ -6,13 +6,22 @@
 from __future__ import annotations
 
 import base64
+import io
 import time
 
 import anthropic
+from PIL import Image
 
 from app.config import ANTHROPIC_API_KEY
 
 MODEL = "claude-sonnet-4-5"
+
+# 작은 스크린샷(특히 좁은 배너형 캡처)은 실제 사용해보니 글자 오독이 잦았다 — 짧은 변이
+# 이 값보다 작으면 확대해서 보낸다. 실측: 세로 40px 리뷰 캡처에서 여러 단어를 잘못 읽던
+# 문제가, 확대 후엔 거의 완벽하게 교정됐다(체감상 vision 모델이 작은 글자를 실제로 읽기보다
+# 비슷한 모양으로 추측해버리는 것으로 보임).
+OCR_MIN_DIMENSION_PX = 800
+OCR_MAX_UPSCALE = 4
 
 SYSTEM_PROMPT = """너는 상품 후기 스크린샷에서 텍스트를 추출하는 AI 직원이다.
 이미지 안에 보이는 리뷰 본문 텍스트를 있는 그대로 옮겨 적어라 (요약하거나 각색하지 않는다).
@@ -31,10 +40,33 @@ def _client() -> anthropic.Anthropic:
     return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 
+def _maybe_upscale(image_bytes: bytes, media_type: str) -> tuple[bytes, str]:
+    """짧은 변이 OCR_MIN_DIMENSION_PX보다 작은 이미지를 확대해서 돌려준다.
+
+    이미지를 열 수 없으면(지원 안 하는 포맷 등) 원본을 그대로 돌려주고 Claude에게 맡긴다.
+    """
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+    except Exception:
+        return image_bytes, media_type
+
+    shorter_side = min(image.width, image.height)
+    if shorter_side == 0 or shorter_side >= OCR_MIN_DIMENSION_PX:
+        return image_bytes, media_type
+
+    scale = min(OCR_MIN_DIMENSION_PX / shorter_side, OCR_MAX_UPSCALE)
+    new_size = (round(image.width * scale), round(image.height * scale))
+    upscaled = image.convert("RGB").resize(new_size, Image.LANCZOS)
+    buf = io.BytesIO()
+    upscaled.save(buf, "PNG")
+    return buf.getvalue(), "image/png"
+
+
 def extract_review_text(
     image_bytes: bytes, media_type: str, client: anthropic.Anthropic | None = None
 ) -> str:
     active_client = client or _client()
+    image_bytes, media_type = _maybe_upscale(image_bytes, media_type)
     b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
     last_error: Exception | None = None

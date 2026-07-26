@@ -1,3 +1,4 @@
+import base64
 import subprocess
 
 import pytest
@@ -5,11 +6,42 @@ import pytest
 from app.media import tts
 
 
+def _fake_alignment_json(audio_bytes: bytes, words: list[str]) -> dict:
+    """/with-timestamps 응답 형태(글자 단위 정렬 포함)를 흉내낸다."""
+    characters = []
+    starts = []
+    ends = []
+    t = 0.0
+    for i, word in enumerate(words):
+        for ch in word:
+            characters.append(ch)
+            starts.append(t)
+            t += 0.1
+            ends.append(t)
+        if i < len(words) - 1:
+            characters.append(" ")
+            starts.append(t)
+            t += 0.05
+            ends.append(t)
+    return {
+        "audio_base64": base64.b64encode(audio_bytes).decode("ascii"),
+        "alignment": {
+            "characters": characters,
+            "character_start_times_seconds": starts,
+            "character_end_times_seconds": ends,
+        },
+    }
+
+
 class _FakeResponse:
-    def __init__(self, status_code: int, content: bytes = b"", text: str = ""):
+    def __init__(self, status_code: int, content: bytes = b"", text: str = "", json_body: dict | None = None):
         self.status_code = status_code
         self.content = content
         self.text = text
+        self._json_body = json_body
+
+    def json(self):
+        return self._json_body
 
 
 class _FakeHttpxClient:
@@ -62,7 +94,9 @@ def _reset_fake_communicate_log():
 
 
 def test_elevenlabs_synthesize_scene_audio_writes_file(tmp_path):
-    client = _FakeHttpxClient([_FakeResponse(200, content=b"FAKE_MP3_BYTES")])
+    client = _FakeHttpxClient(
+        [_FakeResponse(200, json_body=_fake_alignment_json(b"FAKE_MP3_BYTES", ["안녕하세요"]))]
+    )
     output_path = str(tmp_path / "scene_1.mp3")
 
     result_path = tts.synthesize_scene_audio(
@@ -74,9 +108,23 @@ def test_elevenlabs_synthesize_scene_audio_writes_file(tmp_path):
     assert client.calls == 1
 
 
+def test_elevenlabs_synthesize_script_audio_includes_real_word_timings(monkeypatch, tmp_path):
+    monkeypatch.setattr(tts, "get_audio_duration_sec", lambda path: 1.5)
+    client = _FakeHttpxClient(
+        [_FakeResponse(200, json_body=_fake_alignment_json(b"AUDIO", ["안녕", "반가워요"]))]
+    )
+    scenes = [{"seq": 1, "narration": "안녕 반가워요", "caption": "인사"}]
+
+    results = tts.synthesize_script_audio(scenes, str(tmp_path), client=client, provider="elevenlabs")
+
+    timings = results[0]["word_timings"]
+    assert [w[0] for w in timings] == ["안녕", "반가워요"]
+    assert timings[0][1] == 0.0  # 첫 단어는 0초부터 시작
+
+
 def test_elevenlabs_retries_once_then_succeeds(tmp_path):
     client = _FakeHttpxClient(
-        [_FakeResponse(500, text="server error"), _FakeResponse(200, content=b"OK")]
+        [_FakeResponse(500, text="server error"), _FakeResponse(200, json_body=_fake_alignment_json(b"OK", ["텍스트"]))]
     )
     output_path = str(tmp_path / "scene_1.mp3")
 
@@ -192,3 +240,18 @@ def test_edge_tts_real_call_produces_playable_audio(tmp_path):
 
     duration = tts.get_audio_duration_sec(output_path)
     assert duration > 0.5
+
+
+# --- 단어 타이밍 그룹핑 ---
+
+
+def test_group_word_timings_splits_on_spaces():
+    alignment = _fake_alignment_json(b"", ["안녕", "반가워요"])["alignment"]
+    words = tts._group_word_timings(alignment)
+    assert [w[0] for w in words] == ["안녕", "반가워요"]
+    assert words[0][1] == 0.0
+    assert words[0][2] < words[1][1]  # 첫 단어 끝 <= 둘째 단어 시작
+
+
+def test_group_word_timings_empty_alignment_returns_empty_list():
+    assert tts._group_word_timings({}) == []
