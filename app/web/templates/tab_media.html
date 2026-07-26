@@ -5,77 +5,82 @@
 <div class="three-col" data-view="{{ view }}">
   <div class="panel list-panel">
     {% if products %}
-      {% for p in products %}
-      {% call list_row(
-        href="/media?selected=" ~ p.id ~ "&view=detail",
-        selected=(selected and selected.id == p.id),
-        delete_action="/products/" ~ p.id ~ "/delete",
-        redirect_to="media"
-      ) %}
-        <span class="list-item-title">{{ p.product_name or "(이름 미입력)" }}</span>
-        <span class="pill {% if p.status == 'media_generated' or p.status == 'thumbnail_generated' %}pill-success{% else %}pill-accent{% endif %}">
-          {% if p.status == 'script_approved' %}렌더링중{% elif p.status == 'media_generated' %}썸네일대기{% else %}완료{% endif %}
-        </span>
-      {% endcall %}
-      {% endfor %}
+    {% for p in products %}
+    {% call list_row(
+    href="/media?selected=" ~ p.id ~ "&view=detail",
+    selected=(selected and selected.id == p.id),
+    delete_action="/products/" ~ p.id ~ "/delete",
+    redirect_to="media"
+    ) %}
+    <span class="list-item-title">{{ p.product_name or "(이름 미입력)" }}</span>
+    <span
+      class="pill {% if p.status == 'media_generated' or p.status == 'thumbnail_generated' %}pill-success{% else %}pill-accent{% endif %}">
+      {% if p.status == 'script_approved' %}렌더링중{% elif p.status == 'media_generated' %}썸네일대기{% else %}완료{% endif %}
+    </span>
+    {% endcall %}
+    {% endfor %}
     {% else %}
-      <div class="empty-banner">아직 이 단계로 넘어온 상품이 없어요.<br><a class="btn btn-ghost" href="/scripts" style="margin-top:8px;">이전 탭으로</a></div>
+    <div class="empty-banner">아직 이 단계로 넘어온 상품이 없어요.<br><a class="btn btn-ghost" href="/scripts"
+        style="margin-top:8px;">이전 탭으로</a></div>
     {% endif %}
   </div>
 
   <div class="panel center-panel">
     <a class="back-to-list" href="/media">← 목록</a>
     {% if not selected %}
-      <div class="empty-banner">왼쪽 목록에서 상품을 선택해주세요.</div>
+    <div class="empty-banner">왼쪽 목록에서 상품을 선택해주세요.</div>
     {% else %}
-      <h2 style="margin-top:0;">{{ selected.product_name }}</h2>
-      {% if render_job and render_job.status == 'done' %}
-        <video controls src="/{{ render_job.output_path.replace('\\', '/') }}"></video>
-      {% elif render_job %}
-        <p>🔄 진행중: {{ render_job.status }}</p>
-        {% if render_job.status not in ['done', 'failed'] %}
-        <script>
-          // 렌더링이 끝날 때까지 5초마다 새로고침 — 서버가 다시 렌더링해서 상태가
-          // done/failed로 바뀌면 이 스크립트 자체가 더 이상 내려오지 않아 자동으로 멈춘다.
-          setTimeout(function () { location.reload(); }, 5000);
-        </script>
-        {% endif %}
-      {% else %}
-        <p style="color:var(--text-dim);">아직 렌더링이 시작되지 않았어요.</p>
-      {% endif %}
+    <h2 style="margin-top:0;">{{ selected.product_name }}</h2>
+    {% if render_job and render_job.status == 'done' %}
+    <video controls src="/{{ render_job.output_path.replace('\\', '/') }}"></video>
+    {% elif render_job %}
+    <p>🔄 진행중: {{ render_job.status }}</p>
+    {% if render_job.status not in ['done', 'failed'] %}
+    <script>
+      // 렌더링이 끝날 때까지 5초마다 새로고침 — 서버가 다시 렌더링해서 상태가
+      // done/failed로 바뀌면 이 스크립트 자체가 더 이상 내려오지 않아 자동으로 멈춘다.
+      setTimeout(function () { location.reload(); }, 5000);
+    </script>
+    {% endif %}
+    {% else %}
+    <p style="color:var(--text-dim);">아직 렌더링이 시작되지 않았어요.</p>
+    {% endif %}
 
-      {% if thumbnail %}
-        <p style="margin-top:14px;"><strong>썸네일</strong></p>
-        <img class="thumb-preview" src="/{{ thumbnail.image_path.replace('\\', '/') }}">
-      {% endif %}
+    {% if thumbnail %}
+    <p style="margin-top:14px;"><strong>썸네일</strong></p>
+    <img class="thumb-preview" src="/{{ thumbnail.image_path.replace('\\', '/') }}">
+    {% endif %}
 
-      {% if render_job and render_job.status == 'done' %}
-      <div class="card-field" style="margin-top:14px;">
-        <label>유튜브 제목/설명 체크</label>
-        <p>
-          고지문구 {% if disclosure_ok %}✅{% else %}❌{% endif %} ·
-          딥링크 {% if deeplink_ok %}✅{% else %}❌{% endif %}
-        </p>
-      </div>
-      {% endif %}
+    {% if render_job and render_job.status == 'done' %}
+    <div class="card-field" style="margin-top:14px;">
+      <label>유튜브 제목/설명 체크</label>
+      <p>
+        고지문구 {% if disclosure_ok %}✅{% else %}❌{% endif %} ·
+        딥링크 {% if deeplink_ok %}✅{% else %}❌{% endif %}
+      </p>
+    </div>
+    {% endif %}
     {% endif %}
   </div>
 
   <div class="panel action-panel">
     {% if selected %}
     <div class="prev-stage-section">
-      <a class="prev-stage-link" href="/scripts?selected={{ selected.id }}&view=detail">← 대본작성으로 (대본/이미지 수정)</a>
+      <a class="prev-stage-link" href="/scripts?selected={{ selected.id }}&view=detail">대본작성으로 이동</a>
     </div>
     {% endif %}
-    {% if selected and render_job and render_job.status == 'done' %}
-      <form method="post" action="/media/{{ render_job.id }}/generate-thumbnail">
-        <input type="hidden" name="product_id" value="{{ selected.id }}">
-        <button class="btn btn-ghost" type="submit">썸네일 다시 생성</button>
-      </form>
-      <form method="post" action="/media/{{ render_job.id }}/queue-upload">
-        <input type="hidden" name="product_id" value="{{ selected.id }}">
-        <button class="btn btn-primary" type="submit">게시 준비하고 다음으로</button>
-      </form>
+    {% if selected %}
+    {% set is_ready = render_job and render_job.status == 'done' %}
+    <form method="post" action="/media/{{ render_job.id if render_job else '' }}/generate-thumbnail">
+      <input type="hidden" name="product_id" value="{{ selected.id }}">
+      <button class="btn btn-ghost" type="submit" {% if not is_ready %}disabled title="렌더링이 끝나면 활성화돼요"{% endif %}>썸네일
+        다시 생성</button>
+    </form>
+    <form method="post" action="/media/{{ render_job.id if render_job else '' }}/queue-upload">
+      <input type="hidden" name="product_id" value="{{ selected.id }}">
+      <button class="btn btn-primary" type="submit" {% if not is_ready %}disabled title="렌더링이 끝나면 활성화돼요"{% endif %}>게시
+        준비하고 다음으로</button>
+    </form>
     {% endif %}
   </div>
 </div>

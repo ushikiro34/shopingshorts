@@ -35,6 +35,7 @@ from app.media.thumbnail import generate_thumbnail
 from app.review.analyzer import ReviewAnalysisError, analyze_reviews
 from app.review.ocr import ReviewOcrError, extract_review_text
 from app.script.generator import ScriptGenerationError, generate_script
+from app.script.image_matcher import ImageMatchError, select_scene_images
 from app.script.validator import ScriptValidationError, validate_script
 from app.upload.publisher import PublishError, publish_video
 from app.web.auth import current_user, sign_in
@@ -551,6 +552,17 @@ def scripts_generate(request: Request, product_id: str, tone: str = Form(...)):
     if script_json is None:
         return RedirectResponse(f"/scripts?selected={product_id}&view=detail&toast=대본+생성+실패:+{str(last_error)[:60]}", status_code=302)
 
+    # scenes[].image_index는 대본 생성 단계에서 LLM이 이미지를 실제로 보지 않고 순환 배정한
+    # 임시값이다 — 여기서 visual(화면 연출) 문구와 후보 사진을 실제로 대조해 다시 고른다.
+    # 실패해도 대본 생성 자체를 막을 정도는 아니라, 임시 배정값을 그대로 둔 채 진행한다.
+    try:
+        image_map = select_scene_images(script_json["scenes"], product.get("image_urls") or [])
+        for scene in script_json["scenes"]:
+            if scene["seq"] in image_map:
+                scene["image_index"] = image_map[scene["seq"]]
+    except ImageMatchError:
+        pass
+
     client.table("scripts").insert(
         {
             "product_id": product_id,
@@ -770,9 +782,18 @@ def publish_cancel(request: Request, upload_queue_id: str):
 
 @router.post("/publish/{upload_queue_id}/delete")
 def delete_upload_queue_item(request: Request, upload_queue_id: str):
-    """게시검토 탭 리스트 삭제 아이콘 — upload_queue 행 자체를 지운다(취소와 달리 목록에서 사라짐)."""
+    """게시검토 탭 리스트 삭제 아이콘 — 다른 탭의 삭제와 동일하게 products부터 지운다.
+
+    upload_queue 행만 지우면 products.status가 queued_for_upload로 남아, 어느 탭 목록에도
+    안 걸리면서 대시보드 홈 '최근 프로젝트'(상태 무관하게 최근순으로 보여줌)에만 계속
+    남는 고아 데이터가 되는 버그가 있었다. products를 지우면 FK cascade로
+    scripts/render_jobs/upload_queue/thumbnails까지 함께 삭제된다.
+    """
     client = get_client()
-    client.table("upload_queue").delete().eq("id", upload_queue_id).execute()
+    item = client.table("upload_queue").select("*").eq("id", upload_queue_id).execute().data[0]
+    render_job = client.table("render_jobs").select("script_id").eq("id", item["render_job_id"]).execute().data[0]
+    script = client.table("scripts").select("product_id").eq("id", render_job["script_id"]).execute().data[0]
+    client.table("products").delete().eq("id", script["product_id"]).execute()
     return RedirectResponse("/publish?toast=삭제했어요", status_code=302)
 
 

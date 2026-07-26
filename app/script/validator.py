@@ -85,6 +85,14 @@ def validate_scenes(script_json: dict) -> list[str]:
         errors.append(
             f"estimated_duration_sec({duration})이 {MIN_DURATION_SEC}~{MAX_DURATION_SEC}초 범위를 벗어났습니다."
         )
+
+    # 대본작성 탭에서 각 구조 카드마다 해당 자막을 같이 보여주려면 stage가 STRUCTURE_FIELDS
+    # 중 하나로 정확히 채워져 있어야 한다 — 비어있거나 오타면 그 씬의 자막이 어느 카드에도
+    # 안 붙어 조용히 누락된다.
+    for scene in scenes:
+        stage = scene.get("stage")
+        if stage not in STRUCTURE_FIELDS:
+            errors.append(f"scene {scene.get('seq', '?')}의 stage('{stage}')가 {STRUCTURE_FIELDS} 중 하나가 아닙니다.")
     return errors
 
 

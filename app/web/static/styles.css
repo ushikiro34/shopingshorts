@@ -951,12 +951,15 @@ a {
   overflow: hidden;
 }
 
+/* 나레이션 영역이 너무 높다는 피드백으로 나레이션 높이를 기존의 절반으로 줄이고, 자막
+   높이는 그대로 유지했다 — 두 영역이 이제 동일한 크기라 grid-template-rows도 1:1로 맞췄다
+   (자막 영역 크기 = 기존 그대로, 카드 총높이 = 기존의 2/3). */
 .script-card-4 {
-  height: calc(1.6em * 4 + 24px);
+  height: calc(1.6em * 5 + 24px);
 }
 
-.script-card-6 {
-  height: calc(1.6em * 6 + 24px);
+.script-card-8 {
+  height: calc(1.6em * 9 + 24px);
 }
 
 .script-card-label {
@@ -986,7 +989,11 @@ a {
 .script-cell-display {
   flex: 1 1 auto;
   display: flex;
-  align-items: center;
+  /* center였다가 flex-start로 변경 — 나레이션 아래에 자막까지 붙으면서 카드 고정 높이를
+     넘는 경우가 흔해졌는데, center 정렬은 넘치는 내용을 위아래 양쪽에서 잘라버려서
+     스크롤해도 맨 앞부분(나레이션 시작)이 안 보이는 문제가 있었다. 위에서부터 채우면
+     넘쳐도 항상 처음부터 보이고 아래로만 스크롤하면 된다. */
+  align-items: flex-start;
   padding: 12px;
   overflow-y: auto;
   font-size: 14px;
@@ -997,6 +1004,60 @@ a {
 
 .script-cell-display[hidden] {
   display: none;
+}
+
+/* 구조 카드 안에 나레이션만 있으면 자막이 실제로 어떻게 보일지 판단하기 어렵다는 피드백으로
+   나레이션/자막 두 영역을 가로 2줄로 나눠 보여준다. 각 줄은 카드 높이의 절반씩 차지하고
+   (grid-template-rows: 1fr 1fr), 내용이 넘치면 줄 단위로 따로 스크롤된다 — 나레이션이
+   길어도 자막 줄이 밀려 잘리지 않는다. */
+.script-part-content {
+  display: grid;
+  /* 나레이션 높이를 절반으로 줄이면서 자막 높이는 그대로 유지한 결과 두 영역이 같은
+     크기가 됐다 — 1:1로 배분한다. */
+  grid-template-rows: 1fr 1fr;
+  height: 100%;
+  width: 100%;
+}
+
+.script-part-row {
+  display: flex;
+  gap: 10px;
+  padding: 6px 0;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.script-part-row + .script-part-row {
+  border-top: 1px dashed var(--border);
+}
+
+.script-part-row-label {
+  flex: 0 0 52px;
+  padding-top: 1px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent);
+}
+
+.script-part-row-content {
+  flex: 1 1 auto;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.script-part-row-content.is-caption {
+  font-size: 12px;
+  color: var(--text-dim);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.script-caption-empty {
+  color: var(--text-dim);
+  opacity: 0.5;
 }
 
 .script-cell {

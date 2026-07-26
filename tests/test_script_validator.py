@@ -25,11 +25,11 @@ def _base_script(**overrides) -> dict:
         "educational_note": {"included": False, "text": ""},
         "tone": "생활팁",
         "scenes": [
-            {"seq": 1, "narration": "요즘 자꾸 새벽에 깨시나요", "caption": "공감", "image_index": 0, "duration_sec": 8},
-            {"seq": 2, "narration": "낮에도 피곤하고 짜증나셨죠", "caption": "감정", "image_index": 0, "duration_sec": 8},
-            {"seq": 3, "narration": "잠을 설치면 하루가 무너져요", "caption": "문제", "image_index": 1, "duration_sec": 8},
-            {"seq": 4, "narration": "숙면 루틴이 필요해요", "caption": "해결", "image_index": 1, "duration_sec": 8},
-            {"seq": 5, "narration": "이 수면 안대로 시작해보세요", "caption": "상품", "image_index": 2, "duration_sec": 8},
+            {"seq": 1, "stage": "empathy", "narration": "요즘 자꾸 새벽에 깨시나요", "caption": "공감", "image_index": 0, "duration_sec": 8},
+            {"seq": 2, "stage": "emotion", "narration": "낮에도 피곤하고 짜증나셨죠", "caption": "감정", "image_index": 0, "duration_sec": 8},
+            {"seq": 3, "stage": "problem", "narration": "잠을 설치면 하루가 무너져요", "caption": "문제", "image_index": 1, "duration_sec": 8},
+            {"seq": 4, "stage": "solution", "narration": "숙면 루틴이 필요해요", "caption": "해결", "image_index": 1, "duration_sec": 8},
+            {"seq": 5, "stage": "product", "narration": "이 수면 안대로 시작해보세요", "caption": "상품", "image_index": 2, "duration_sec": 8},
         ],
         "disclosure": PARTNERS_DISCLOSURE,
         "estimated_duration_sec": 40,
@@ -83,6 +83,15 @@ def test_too_few_scenes_rejected():
     with pytest.raises(ScriptValidationError) as exc:
         validate_script(script, reviews_raw="", needs_education=False)
     assert any("scenes" in e for e in exc.value.errors)
+
+
+def test_scene_missing_valid_stage_rejected():
+    # stage가 STRUCTURE_FIELDS 중 하나여야 대본작성 탭에서 카드별 자막 매칭이 가능하다.
+    script = _base_script()
+    script["scenes"][0]["stage"] = "hook"
+    with pytest.raises(ScriptValidationError) as exc:
+        validate_script(script, reviews_raw="", needs_education=False)
+    assert any("stage" in e for e in exc.value.errors)
 
 
 def test_duration_out_of_range_rejected():

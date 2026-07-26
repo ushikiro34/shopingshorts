@@ -83,8 +83,24 @@ def _build_output_schema_example(needs_education: bool) -> dict:
         "educational_note": educational_note_example,
         "tone": "생활팁",
         "scenes": [
-            {"seq": 1, "narration": "...", "caption": "...", "image_index": 0, "duration_sec": 5},
-            {"seq": 2, "narration": "...", "caption": "...", "image_index": 1, "duration_sec": 5},
+            {
+                "seq": 1,
+                "stage": "empathy",
+                "narration": "...",
+                "caption": "...",
+                "visual": "긴장감: 기기를 조심스럽게 만지며 불안해하는 손 클로즈업",
+                "image_index": 0,
+                "duration_sec": 5,
+            },
+            {
+                "seq": 2,
+                "stage": "product",
+                "narration": "...",
+                "caption": "...",
+                "visual": "만족감: 완성된 결과물을 보며 흐뭇해하는 컷",
+                "image_index": 1,
+                "duration_sec": 5,
+            },
         ],
         "disclosure": PARTNERS_DISCLOSURE,
         "estimated_duration_sec": 45,
@@ -121,10 +137,20 @@ def build_system_prompt(tone: str, needs_education: bool) -> str:
 제약(반드시 지켜야 하며, 어기면 시스템이 자동으로 반려한다):
 - scenes 배열의 원소 개수는 반드시 3개 이상 8개 이하다. 9개 이상은 절대 금지. 5단계 구조를 scene 여러 개로
   나누더라도 총합이 8을 넘지 않게 통합하라 (예: problem+educational_note를 한 scene에 같이 담아도 된다).
+- scenes[].stage에는 그 씬이 구조(structure)의 어느 단계에 해당하는지 empathy/emotion/problem/solution/
+  result/product 중 정확히 하나를 넣는다. 한 단계를 씬 여러 개로 나눠 썼다면(예: product를 2개 씬으로
+  나눔) 그 씬들 모두 같은 stage 값을 쓴다. scenes는 stage 순서대로(empathy -> ... -> product) 정렬한다.
 - narration을 모두 합친 영상 길이(estimated_duration_sec)는 30~45초.
-- scenes[].image_index는 0 이상 (user 메시지의 image_count - 1) 이하의 정수만 쓴다. 등장하는
-  이미지 여러 장을 씬마다 최대한 고르게 순환시켜 쓰고(예: image_count=4면 0,1,2,3,0,1,2,3),
-  image_count가 1이면 전부 0으로 둔다. 모든 씬을 0으로만 채우지 않는다(image_count>1일 때).
+- scenes[].duration_sec은 그 씬 narration을 한국어 TTS로 자연스럽게 읽는 데 걸리는 시간(초)을
+  추정해서 쓴다(대략 초당 4~5글자 기준). 실제 렌더링에서 이 값이 그 씬의 길이로 쓰이므로,
+  narration 글자 수와 동떨어진 숫자(너무 짧거나 너무 긴 값)를 넣으면 음성이 부자연스럽게
+  빨라지거나 느려진다.
+- scenes[].visual에는 그 씬에 어울리는 화면 연출을 한 문장으로 짧게 적는다: "감정/분위기 태그: 구체적으로
+  어떤 장면·구도·표정이 보이면 좋을지" 형태로 쓴다 (예: "답답함: 잘 안 붙는 부품을 만지며 인상 쓰는 손").
+  이 텍스트는 실제 촬영 지시가 아니라, 후보 사진 중 가장 어울리는 컷을 고르는 데 참고용으로 쓰인다.
+- scenes[].image_index는 0 이상 (user 메시지의 image_count - 1) 이하의 정수만 쓴다. 실제로 어떤 사진이
+  쓰일지는 나중에 visual 문구를 보고 별도로 다시 고르므로, 여기서는 이미지 여러 장을 씬마다 최대한
+  고르게 순환시켜 임시로 채운다(예: image_count=4면 0,1,2,3,0,1,2,3), image_count가 1이면 전부 0으로 둔다.
 - narration에는 리뷰 원문 문장을 그대로 옮기지 않는다 (재구성된 표현만 사용).
 - product 단계 narration에는 실제 상품명(user 메시지의 product_name 값)을 쓰지 않는다. "이 제품은"/"이 제품이" 등으로 지칭한다.
 - disclosure 필드에는 반드시 다음 문구를 정확히 그대로 넣는다: "{PARTNERS_DISCLOSURE}"
