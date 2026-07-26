@@ -19,6 +19,7 @@ def _base_script(**overrides) -> dict:
             "emotion": "낮에도 피곤하고 짜증나셨죠.",
             "problem": "잠을 설치면 하루종일 컨디션이 무너져요.",
             "solution": "숙면 루틴을 도와주는 도구가 필요해요.",
+            "result": "일주일 써보니 새벽에 안 깨고 아침에 개운했어요.",
             "product": "이 수면 안대 하나로 편하게 주무세요. 제품정보는 본문에 있어요, 확인해보세요.",
         },
         "educational_note": {"included": False, "text": ""},
@@ -52,6 +53,15 @@ def test_missing_structure_field_rejected():
     with pytest.raises(ScriptValidationError) as exc:
         validate_script(script, reviews_raw="", needs_education=False)
     assert any("emotion" in e for e in exc.value.errors)
+
+
+def test_missing_result_field_rejected():
+    # result(결과) 단계 추가 회귀 테스트 — 6개 필드 중 하나로 빠짐없이 검증돼야 한다.
+    script = _base_script()
+    script["structure"]["result"] = ""
+    with pytest.raises(ScriptValidationError) as exc:
+        validate_script(script, reviews_raw="", needs_education=False)
+    assert any("result" in e for e in exc.value.errors)
 
 
 def test_invalid_tone_rejected():

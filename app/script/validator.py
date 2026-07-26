@@ -10,7 +10,7 @@ import re
 
 from app.config import EDUCATION_FORBIDDEN_KEYWORDS, PARTNERS_DISCLOSURE, SCRIPT_TONES
 
-STRUCTURE_FIELDS = ["empathy", "emotion", "problem", "solution", "product"]
+STRUCTURE_FIELDS = ["empathy", "emotion", "problem", "solution", "result", "product"]
 MIN_SCENES = 3
 MAX_SCENES = 8
 MIN_DURATION_SEC = 30

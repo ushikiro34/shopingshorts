@@ -534,13 +534,22 @@ def scripts_generate(request: Request, product_id: str, tone: str = Form(...)):
     analysis = client.table("review_analysis").select("*").eq("review_id", review["id"]).order("created_at", desc=True).limit(1).execute().data[0]
 
     needs_education = bool(product.get("needs_education", False))
-    try:
-        script_json = generate_script(
-            analysis_json=analysis["analysis_json"], product=product, tone=tone, needs_education=needs_education
-        )
-        validate_script(script_json, review["reviews_raw"], needs_education)
-    except (ScriptGenerationError, ScriptValidationError) as exc:
-        return RedirectResponse(f"/scripts?selected={product_id}&view=detail&toast=대본+생성+실패:+{str(exc)[:60]}", status_code=302)
+    script_json = None
+    last_error: Exception | None = None
+    for attempt in range(2):  # 최초 시도 + 검증 실패 시 재시도 1회 (AGENTS.md 코딩 컨벤션)
+        try:
+            candidate = generate_script(
+                analysis_json=analysis["analysis_json"], product=product, tone=tone, needs_education=needs_education
+            )
+            validate_script(candidate, review["reviews_raw"], needs_education)
+            script_json = candidate
+            break
+        except (ScriptGenerationError, ScriptValidationError) as exc:
+            last_error = exc
+            continue
+
+    if script_json is None:
+        return RedirectResponse(f"/scripts?selected={product_id}&view=detail&toast=대본+생성+실패:+{str(last_error)[:60]}", status_code=302)
 
     client.table("scripts").insert(
         {
@@ -563,6 +572,7 @@ def scripts_edit(
     emotion: str = Form(""),
     problem: str = Form(""),
     solution: str = Form(""),
+    result: str = Form(""),
     product: str = Form(""),
 ):
     client = get_client()
@@ -573,6 +583,7 @@ def scripts_edit(
         "emotion": emotion,
         "problem": problem,
         "solution": solution,
+        "result": result,
         "product": product,
     }
     client.table("scripts").update(
