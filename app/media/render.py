@@ -148,30 +148,8 @@ def build_text_block_filter(
     return ",".join(filters)
 
 
-def estimate_word_timings(text: str, duration_sec: float) -> list[tuple[str, float, float]]:
-    """단어별 (start, end) 등장 시각을 글자 수 비례로 추정한다.
-
-    edge-tts 한국어 보이스는 SentenceBoundary만 주고 WordBoundary(단어 단위 타임스탬프)를
-    안 준다(실측 확인됨) — ElevenLabs 등 실제 타임스탬프 API로 교체하기 전까지 쓰는 근사치다.
-    실제 발화 속도와 100% 일치하진 않지만, 자막이 통째로 뜨는 것보다는 훨씬 역동적으로 보인다.
-    """
-    words = text.split()
-    if not words:
-        return []
-    weights = [len(w) for w in words]
-    total_weight = sum(weights) or 1
-    timings = []
-    t = 0.0
-    for word, weight in zip(words, weights):
-        span = duration_sec * weight / total_weight
-        timings.append((word, t, t + span))
-        t += span
-    return timings
-
-
 def build_animated_caption_filter(
     text: str,
-    duration_sec: float,
     font_path: str,
     work_dir: str,
     basename: str,
@@ -180,19 +158,12 @@ def build_animated_caption_filter(
     max_width_px: int = CAPTION_MAX_WIDTH,
     line_height: int = TEXT_LINE_HEIGHT,
     box_padding: int = TEXT_BOX_PADDING,
-    word_timings: list[tuple[str, float, float]] | None = None,
 ) -> str:
-    """자막을 통째로 보여주는 대신, 단어가 실제(또는 추정) 등장하는 시각마다 한 개씩
-    누적해서 드러내는(타자기/노래방 자막 느낌) filtergraph 조각을 만든다.
+    """자막 문장 전체를 씬 시작과 동시에 페이드인시켜 끝까지 그대로 보여준다.
 
-    word_timings를 넘기면(ElevenLabs의 실제 단어별 타임스탬프) 그걸 그대로 쓰고, 없으면
-    estimate_word_timings로 글자 수 비례 추정치를 쓴다. word_timings를 쓸 때 text는 반드시
-    그 타이밍을 계산한 원문(나레이션)과 같은 문자열이어야 한다 — 단어 개수/순서가 어긋나면
-    자막이 엉뚱한 타이밍에 나온다.
-
-    줄바꿈은 wrap_text_lines로 완성 문장 기준 미리 계산해 고정한다 — 단어가 늘어날 때마다
-    다시 줄바꿈하면 박스 높이/줄 위치가 흔들리기 때문에, 각 줄에 속할 단어를 먼저 정하고
-    그 줄 안에서만 단어를 누적한다.
+    이전엔 단어가 하나씩 늘어나며 문장이 완성되어가는("노래방 자막") 방식이었는데, 실제로
+    보니 그 완성되어가는 모습이 어색하다는 피드백을 받아 문장 전체를 한 번에 드러내는
+    방식으로 바꿨다.
     """
     escaped_font = escape_path_for_filter(font_path)
     lines = wrap_text_lines(text, font_path, fontsize, max_width_px)
@@ -200,37 +171,20 @@ def build_animated_caption_filter(
     box_top = f"ih-{bottom_margin}-{box_height}"
 
     filters = [f"drawbox=x=0:y={box_top}:w=iw:h={box_height}:color=black@0.55:t=fill"]
-    if word_timings is None:
-        word_timings = estimate_word_timings(text, duration_sec)
-
-    word_cursor = 0
+    # 씬 시작(t=0)부터 CAPTION_POP_FADE_SEC 동안 alpha가 0에서 1로 올라가고, 이후 씬이
+    # 끝날 때까지 그대로 유지된다 — 뚝 나타나는 대신 살짝 페이드인되는 느낌만 남긴다.
+    alpha = f"min(t/{CAPTION_POP_FADE_SEC},1)"
     for line_i, line in enumerate(lines):
-        line_words = line.split()
         # drawtext에서는 (drawbox와 반대로) h가 이미 프레임 높이를 가리킨다 — ih를 쓰면 안 된다.
         y = f"h-{bottom_margin}-{box_height}+{box_padding + line_i * line_height}"
-        for reveal_count in range(1, len(line_words) + 1):
-            state_index = word_cursor + reveal_count - 1
-            start = word_timings[state_index][1] if state_index < len(word_timings) else 0.0
-            if reveal_count < len(line_words):
-                next_start = word_timings[state_index + 1][1]
-                enable = f"between(t,{start:.3f},{next_start:.3f})"
-            else:
-                # 이 줄의 마지막 단어까지 나온 뒤로는(다른 줄이 이어서 채워지는 동안에도)
-                # 씬이 끝날 때까지 그대로 남아 있어야 한다.
-                enable = f"gte(t,{start:.3f})"
-            partial_text = " ".join(line_words[:reveal_count])
-            path = os.path.join(work_dir, f"{basename}.caption.line{line_i}.w{reveal_count}.txt")
-            _write_text_file(partial_text, path)
-            escaped_text = escape_path_for_filter(path)
-            # 단어가 막 나타난 순간(t=start)엔 alpha=0이었다가 CAPTION_POP_FADE_SEC 동안
-            # 1로 올라간다 — enable로 켜지는 순간 뚝 나타나는 대신 살짝 팝인되는 느낌.
-            alpha = f"min((t-{start:.3f})/{CAPTION_POP_FADE_SEC},1)"
-            filters.append(
-                f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor={CAPTION_TEXT_COLOR}:"
-                f"bordercolor={CAPTION_OUTLINE_COLOR}:borderw={CAPTION_OUTLINE_WIDTH}:alpha='{alpha}':"
-                f"fontsize={fontsize}:x=(w-text_w)/2:y={y}:text_shaping=0:enable='{enable}'"
-            )
-        word_cursor += len(line_words)
+        path = os.path.join(work_dir, f"{basename}.caption.line{line_i}.txt")
+        _write_text_file(line, path)
+        escaped_text = escape_path_for_filter(path)
+        filters.append(
+            f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor={CAPTION_TEXT_COLOR}:"
+            f"bordercolor={CAPTION_OUTLINE_COLOR}:borderw={CAPTION_OUTLINE_WIDTH}:alpha='{alpha}':"
+            f"fontsize={fontsize}:x=(w-text_w)/2:y={y}:text_shaping=0"
+        )
     return ",".join(filters)
 
 
@@ -270,14 +224,11 @@ def build_scene_filter_complex(
     disclosure_line_paths: list[str] | None = None,
     hook_text: str | None = None,
     has_icon: bool = False,
-    word_timings: list[tuple[str, float, float]] | None = None,
 ) -> str:
-    """이미지 한 장을 Ken Burns + 단어별 등장 자막(+ 첫 씬은 상단 후킹 문구, 마지막 씬은
+    """이미지 한 장을 Ken Burns + 자막(+ 첫 씬은 상단 후킹 문구, 마지막 씬은
     아이콘 오버레이 + 고지 오버레이)까지 입힌 filter_complex를 만든다."""
     zoompan = build_zoompan_filter(duration_sec)
-    caption_block = build_animated_caption_filter(
-        caption_text, duration_sec, font_path, work_dir, basename, word_timings=word_timings
-    )
+    caption_block = build_animated_caption_filter(caption_text, font_path, work_dir, basename)
     hook_block = build_hook_text_filter(hook_text, font_path, work_dir, basename) if hook_text else None
 
     stage = f"[0:v]{zoompan}[zoomed];[zoomed]{caption_block}"
@@ -372,6 +323,34 @@ def pad_audio_with_silence(audio_path: str, gap_sec: float, output_path: str) ->
     return output_path
 
 
+# 나레이션이 다소 늘어지는 느낌이라는 피드백으로 도입한 기본 배속 — scenes[].duration_sec이
+# 없거나 못 믿을 값일 때(0 이하 등)만 이 고정값으로 폴백한다. 정상적인 경우엔 씬마다
+# calc_narration_speed로 계산한 배율을 쓴다(대본이 계획한 씬 길이를 실제 렌더링에 반영).
+NARRATION_SPEED = 1.1
+# atempo 배율의 상하한 — 대본이 잡은 duration_sec과 실제 TTS 길이 차이가 너무 크면(예: 문장은
+# 짧은데 계획한 시간은 김) 배율을 그대로 걸었을 때 목소리가 부자연스럽게 빠르거나 느려진다.
+# 자연스러운 범위 안에서만 목표 시간에 맞추고, 그 이상 벗어나면 clamp된 배율만큼만 반영한다.
+MIN_NARRATION_SPEED = 0.85
+MAX_NARRATION_SPEED = 1.3
+
+
+def speed_up_audio(audio_path: str, output_path: str, speed: float = NARRATION_SPEED) -> str:
+    """나레이션 오디오를 speed배로 재생 속도만 높인다(피치는 atempo가 자동 보정해 유지)."""
+    run_ffmpeg(["-i", audio_path, "-af", f"atempo={speed}", output_path])
+    return output_path
+
+
+def calc_narration_speed(actual_duration_sec: float, target_duration_sec: float | None) -> float:
+    """실제 TTS 길이를 목표 duration_sec에 맞추는 데 필요한 배속을 자연스러운 범위로 clamp해 돌려준다.
+
+    target_duration_sec이 없거나 0 이하면(대본에 값이 없거나 이상치) NARRATION_SPEED로 폴백한다.
+    """
+    if not target_duration_sec or target_duration_sec <= 0:
+        return NARRATION_SPEED
+    speed = actual_duration_sec / target_duration_sec
+    return max(MIN_NARRATION_SPEED, min(speed, MAX_NARRATION_SPEED))
+
+
 def render_scene_clip(
     image_path: str,
     audio_path: str,
@@ -383,7 +362,6 @@ def render_scene_clip(
     disclosure_text: str | None = None,
     hook_text: str | None = None,
     icon_path: str | None = None,
-    word_timings: list[tuple[str, float, float]] | None = None,
 ) -> str:
     """이미지+오디오 한 씬을 Ken Burns+자막(+고지+아이콘)까지 입힌 mp4 클립으로 렌더링한다."""
     active_font = font_path or resolve_font_path()
@@ -403,7 +381,7 @@ def render_scene_clip(
 
     filter_complex = build_scene_filter_complex(
         duration_sec, caption_text, active_font, work_dir, basename, disclosure_paths, hook_text,
-        has_icon=bool(icon_path), word_timings=word_timings,
+        has_icon=bool(icon_path),
     )
 
     inputs = ["-loop", "1", "-i", image_path, "-i", audio_path]

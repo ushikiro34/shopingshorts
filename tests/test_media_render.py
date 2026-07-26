@@ -1,14 +1,17 @@
 import os
 
 from app.media.render import (
+    MAX_NARRATION_SPEED,
+    MIN_NARRATION_SPEED,
+    NARRATION_SPEED,
     build_animated_caption_filter,
     build_hook_text_filter,
     build_scene_filter_complex,
     build_text_block_filter,
     build_xfade_filter_complex,
     build_zoompan_filter,
+    calc_narration_speed,
     escape_path_for_filter,
-    estimate_word_timings,
     pick_bgm_track,
     resolve_font_path,
     wrap_text_lines,
@@ -94,54 +97,63 @@ def test_build_scene_filter_complex_with_disclosure_has_enable_gate(tmp_path):
     assert "gte(t,8.0)" in filt  # 10초 씬의 마지막 2초부터 노출
 
 
-def test_estimate_word_timings_spans_full_duration():
-    timings = estimate_word_timings("안녕 반가워요 오늘도", 6.0)
-    assert len(timings) == 3
-    assert timings[0][1] == 0.0
-    assert timings[-1][2] == 6.0
-    # 시간 순서대로 이어져야 한다 (겹치거나 비는 구간 없이)
-    for (_, _, end), (_, next_start, _) in zip(timings, timings[1:]):
-        assert end == next_start
-
-
-def test_estimate_word_timings_longer_word_gets_more_time():
-    timings = estimate_word_timings("아 안녕하세요", 3.0)
-    (word_a, start_a, end_a), (word_b, start_b, end_b) = timings
-    assert word_a == "아" and word_b == "안녕하세요"
-    assert (end_b - start_b) > (end_a - start_a)
-
-
-def test_estimate_word_timings_empty_text_returns_empty_list():
-    assert estimate_word_timings("", 5.0) == []
-
-
 def test_build_animated_caption_filter_has_background_drawbox(tmp_path):
     font = resolve_font_path()
-    filt = build_animated_caption_filter("안녕 반가워요", 4.0, font, str(tmp_path), "scene1")
+    filt = build_animated_caption_filter("안녕 반가워요", font, str(tmp_path), "scene1")
     assert filt.startswith("drawbox=")
 
 
-def test_build_animated_caption_filter_one_drawtext_per_word(tmp_path):
+def test_build_animated_caption_filter_one_drawtext_per_line_not_per_word(tmp_path):
+    # 문장이 한 줄에 들어가면(안 넘치면) 단어 개수와 무관하게 drawtext는 1개만 나와야 한다
+    # — 단어별로 나눠 그리던 예전 방식(노래방 자막)과 달리, 이제 줄 단위로 한 번에 그린다.
     font = resolve_font_path()
-    filt = build_animated_caption_filter("안녕 반가워요 오늘도", 4.0, font, str(tmp_path), "scene1")
-    assert filt.count("drawtext=") == 3
+    filt = build_animated_caption_filter("안녕 반가워요 오늘도", font, str(tmp_path), "scene1")
+    assert filt.count("drawtext=") == 1
 
 
-def test_build_animated_caption_filter_last_word_state_persists_to_scene_end(tmp_path):
+def test_build_animated_caption_filter_no_per_word_reveal_timing(tmp_path):
+    # 단어가 하나씩 늘어나며 나타나던 between(t,...) 타이밍 로직이 더는 없어야 한다.
     font = resolve_font_path()
-    filt = build_animated_caption_filter("안녕 반가워요", 4.0, font, str(tmp_path), "scene1")
-    assert "gte(t," in filt
+    filt = build_animated_caption_filter("안녕 반가워요", font, str(tmp_path), "scene1")
+    assert "between(t," not in filt
 
 
-def test_build_animated_caption_filter_uses_provided_word_timings_instead_of_estimate(tmp_path):
-    # ElevenLabs 실측 타이밍을 넘기면 글자 수 추정치 대신 그 값을 그대로 써야 한다.
+def test_build_animated_caption_filter_fades_in_from_scene_start(tmp_path):
+    # 문장 전체가 씬 시작(t=0)부터 페이드인해서 계속 유지돼야 한다.
     font = resolve_font_path()
-    real_timings = [("안녕", 0.0, 5.0), ("반가워요", 5.0, 9.0)]
-    filt = build_animated_caption_filter(
-        "안녕 반가워요", 9.0, font, str(tmp_path), "scene1", word_timings=real_timings
-    )
-    assert "between(t,0.000,5.000)" in filt
-    assert "gte(t,5.000)" in filt
+    filt = build_animated_caption_filter("안녕 반가워요", font, str(tmp_path), "scene1")
+    assert "alpha='min(t/0.12,1)'" in filt
+
+
+def test_build_animated_caption_filter_writes_full_line_text_to_file(tmp_path):
+    font = resolve_font_path()
+    build_animated_caption_filter("안녕 반가워요", font, str(tmp_path), "scene1")
+    written = (tmp_path / "scene1.caption.line0.txt").read_text(encoding="utf-8")
+    assert written == "안녕 반가워요"
+
+
+def test_calc_narration_speed_matches_target_within_clamp_range():
+    # 실제 6초 오디오를 목표 5초에 맞추려면 1.2배가 필요하고, clamp 범위(0.85~1.3) 안이라 그대로 쓰인다.
+    speed = calc_narration_speed(actual_duration_sec=6.0, target_duration_sec=5.0)
+    assert speed == 1.2
+
+
+def test_calc_narration_speed_clamps_when_target_much_shorter_than_actual():
+    # 10초짜리 오디오를 2초에 맞추려면 5배가 필요하지만 부자연스러워 MAX로 clamp된다.
+    speed = calc_narration_speed(actual_duration_sec=10.0, target_duration_sec=2.0)
+    assert speed == MAX_NARRATION_SPEED
+
+
+def test_calc_narration_speed_clamps_when_target_much_longer_than_actual():
+    # 2초짜리 오디오를 10초로 늘리려면 0.2배가 필요하지만 부자연스러워 MIN으로 clamp된다.
+    speed = calc_narration_speed(actual_duration_sec=2.0, target_duration_sec=10.0)
+    assert speed == MIN_NARRATION_SPEED
+
+
+def test_calc_narration_speed_falls_back_when_target_missing_or_invalid():
+    assert calc_narration_speed(actual_duration_sec=5.0, target_duration_sec=None) == NARRATION_SPEED
+    assert calc_narration_speed(actual_duration_sec=5.0, target_duration_sec=0) == NARRATION_SPEED
+    assert calc_narration_speed(actual_duration_sec=5.0, target_duration_sec=-1) == NARRATION_SPEED
 
 
 def test_pick_bgm_track_returns_none_when_dir_missing(tmp_path):

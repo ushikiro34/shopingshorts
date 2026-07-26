@@ -162,8 +162,9 @@ def _synthesize_scene_audio_with_timings(
 ) -> tuple[str, list[WordTiming] | None]:
     """provider별 합성을 실행하고 (경로, 단어별 타이밍) 튜플로 통일해서 돌려준다.
 
-    edge-tts는 단어 타이밍을 안 주므로 항상 None — 호출부(render.py)가 이 경우
-    글자 수 비례 추정치(estimate_word_timings)로 대체한다.
+    edge-tts는 단어 타이밍을 안 주므로 항상 None. 현재 렌더 파이프라인(app/media/worker.py,
+    render.py)은 word_timings를 자막 표시에 쓰지 않지만(문장 전체를 한 번에 보여주는
+    방식으로 바뀜), 이 함수는 duration_sec을 함께 반환하는 통일된 인터페이스라 그대로 둔다.
     """
     active_provider = provider or TTS_PROVIDER
     if active_provider == "edge":

@@ -13,7 +13,7 @@ import pytest
 
 from app.media.graphics import compose_educational_note_scene
 from app.media.images import compose_scene_image, save_jpeg
-from app.media.render import concat_clips, mix_bgm, pad_audio_with_silence, render_scene_clip
+from app.media.render import concat_clips, mix_bgm, pad_audio_with_silence, render_scene_clip, speed_up_audio
 from PIL import Image
 
 FFMPEG_AVAILABLE = subprocess.run(["ffmpeg", "-version"], capture_output=True).returncode == 0
@@ -94,6 +94,17 @@ def test_pad_audio_with_silence_extends_duration_by_gap(tmp_path):
     probe = _ffprobe_json(padded)
     duration = float(probe["format"]["duration"])
     assert 2.9 <= duration <= 3.1  # 2s 원본 + 1s 패딩
+
+
+@pytest.mark.skipif(not FFMPEG_AVAILABLE, reason="ffmpeg not available in this environment")
+def test_speed_up_audio_shortens_duration_by_speed_factor(tmp_path):
+    work_dir = str(tmp_path)
+    audio = _make_silence(f"{work_dir}/audio.wav", 5.0)
+    sped = speed_up_audio(audio, f"{work_dir}/sped.wav", speed=1.1)
+
+    probe = _ffprobe_json(sped)
+    duration = float(probe["format"]["duration"])
+    assert 4.4 <= duration <= 4.6  # 5s / 1.1 ≈ 4.545s
 
 
 def _synthetic_jpeg_bytes(color) -> bytes:

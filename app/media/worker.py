@@ -17,12 +17,14 @@ from app.media.render import (
     HEIGHT,
     WIDTH,
     RenderError,
+    calc_narration_speed,
     concat_clips_with_transitions,
     mix_bgm,
     pad_audio_with_silence,
     pick_bgm_track,
     render_scene_clip,
     resolve_font_path,
+    speed_up_audio,
 )
 from app.media.tts import TTSError, synthesize_script_audio
 
@@ -115,9 +117,16 @@ def render_script(
     for scene in scenes:
         seq = scene["seq"]
         clip_path = os.path.join(work_dir, f"clip_{seq}.mp4")
-        raw_duration = audio_by_seq[seq]["duration_sec"]
-        audio_path = audio_by_seq[seq]["path"]
-        word_timings = audio_by_seq[seq].get("word_timings")
+        actual_audio_duration = audio_by_seq[seq]["duration_sec"]
+        # 대본이 이 씬에 계획한 시간(scene["duration_sec"])에 맞춰 배속을 조절한다 — 실제
+        # 렌더링 길이가 대본작성 단계에서 잡은 씬별 시간 배분을 반영하게 하기 위함이다.
+        # 계획과 실제 TTS 길이 차이가 너무 크면 부자연스러워지므로 자연스러운 범위로 clamp한다.
+        speed = calc_narration_speed(actual_audio_duration, scene.get("duration_sec"))
+        sped_path = os.path.join(work_dir, f"scene_{seq}_sped.mp3")
+        audio_path = speed_up_audio(audio_by_seq[seq]["path"], sped_path, speed=speed)
+        # atempo는 재생 속도를 정확히 배율만큼 바꾸는 결정적 필터라, ffprobe로 다시 재는
+        # 대신 원래 길이를 배율로 나눠서 바로 계산한다.
+        raw_duration = actual_audio_duration / speed
 
         if seq == last_seq:
             duration = raw_duration
@@ -128,23 +137,18 @@ def render_script(
             audio_path = pad_audio_with_silence(audio_path, SCENE_GAP_SEC, padded_path)
             duration = raw_duration + SCENE_GAP_SEC
 
-        # 실제 단어별 타임스탬프(ElevenLabs)가 있으면, 그걸 계산한 원문인 나레이션을 그대로
-        # 자막으로 보여준다 — 짧게 각색된 caption 문구엔 이 타이밍을 그대로 적용할 수 없다
-        # (단어 구성 자체가 달라서). 실측 타이밍이 없으면(edge-tts) 기존처럼 caption +
-        # 글자 수 비례 추정치를 쓴다.
-        caption_source = scene["narration"] if word_timings else scene["caption"]
+        # 자막은 나레이션 원문이 아니라 짧게 각색된 caption 문구를 보여준다.
         render_scene_clip(
             image_paths[seq],
             audio_path,
             duration,
-            caption_source,
+            scene["caption"],
             clip_path,
             work_dir,
             font_path=font,
             disclosure_text=script_json["disclosure"] if seq == last_seq else None,
             hook_text=scene["caption"] if seq == first_seq else None,
             icon_path=icon_path if seq == last_seq else None,
-            word_timings=word_timings,
         )
         clip_paths.append(clip_path)
         clip_durations.append(duration)
