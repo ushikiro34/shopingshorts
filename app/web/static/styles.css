@@ -1454,6 +1454,11 @@ video {
   color: var(--text-dim);
 }
 
+.prev-stage-link.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* --- 모바일: 화면 전환식 --- */
 @media (max-width: 768px) {
 

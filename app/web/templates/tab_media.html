@@ -65,12 +65,18 @@
 
   <div class="panel action-panel">
     {% if selected %}
+    {% set is_ready = render_job and render_job.status == 'done' %}
+    {% set render_in_progress = render_job and render_job.status not in ['done', 'failed'] %}
     <div class="prev-stage-section">
+      {% if render_in_progress %}
+      <span class="prev-stage-link is-disabled" title="렌더링 중에는 대본작성으로 돌아갈 수 없어요 — 지금 돌아가서 대본을 다시
+        생성하면 이미 큐에 들어간 렌더링과 어긋나요">대본작성으로 이동</span>
+      {% else %}
       <a class="prev-stage-link" href="/scripts?selected={{ selected.id }}&view=detail">대본작성으로 이동</a>
+      {% endif %}
     </div>
     {% endif %}
     {% if selected %}
-    {% set is_ready = render_job and render_job.status == 'done' %}
     <form method="post" action="/media/{{ render_job.id if render_job else '' }}/generate-thumbnail">
       <input type="hidden" name="product_id" value="{{ selected.id }}">
       <button class="btn btn-ghost" type="submit" {% if not is_ready %}disabled title="렌더링이 끝나면 활성화돼요"{% endif %}>썸네일
