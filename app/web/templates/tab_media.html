@@ -70,9 +70,9 @@
     <div class="prev-stage-section">
       {% if render_in_progress %}
       <span class="prev-stage-link is-disabled" title="렌더링 중에는 대본작성으로 돌아갈 수 없어요 — 지금 돌아가서 대본을 다시
-        생성하면 이미 큐에 들어간 렌더링과 어긋나요">대본작성으로 이동</span>
+        생성하면 이미 큐에 들어간 렌더링과 어긋나요">← 대본작성으로</span>
       {% else %}
-      <a class="prev-stage-link" href="/scripts?selected={{ selected.id }}&view=detail">대본작성으로 이동</a>
+      <a class="prev-stage-link" href="/scripts?selected={{ selected.id }}&view=detail">← 대본작성으로</a>
       {% endif %}
     </div>
     {% endif %}

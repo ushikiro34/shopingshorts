@@ -45,6 +45,12 @@ import os
 
 router = APIRouter(tags=["web"])
 templates = Jinja2Templates(directory="app/web/templates")
+# styles.css를 브라우저가 캐싱해서, 배포/수정 후에도 강제 새로고침 없이는 옛 스타일이 계속
+# 보이는 문제가 있었다 — 수정 시각을 쿼리스트링으로 붙여 파일이 바뀔 때마다 URL 자체가
+# 바뀌게 해서 브라우저가 항상 새 버전을 받아오게 한다.
+templates.env.globals["static_version"] = lambda: int(
+    os.path.getmtime("app/web/static/styles.css")
+)
 
 DISCOVER_STATUSES = ["discovered", "scored", "reviews_collected"]
 SCRIPT_STATUSES = ["analyzed", "script_generated"]

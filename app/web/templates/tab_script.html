@@ -238,7 +238,7 @@
   <div class="panel action-panel">
     {% if selected %}
     <div class="prev-stage-section">
-      <a class="prev-stage-link" href="/discover?selected={{ selected.id }}&view=detail">상품선택으로 이동</a>
+      <a class="prev-stage-link" href="/discover?selected={{ selected.id }}&view=detail">← 상품선택으로</a>
     </div>
     {% endif %}
     <form method="post" action="/scripts/{{ selected.id if selected else '' }}/generate" id="script-generate-form">

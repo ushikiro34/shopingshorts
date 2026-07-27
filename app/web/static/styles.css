@@ -1448,15 +1448,38 @@ video {
   border-bottom: 1px solid var(--border);
 }
 
+/* 그냥 맨 텍스트 링크였더니 옆의 버튼들(테두리·배경 있는 .btn)과 어울리지 않고 붕 떠
+   보인다는 피드백으로, 같은 버튼 그룹처럼 보이게 테두리 박스 형태로 바꿨다 — 다만 주요
+   액션(승인/게시 등)과 헷갈리지 않게 톤은 한 단계 낮춘 보조 버튼으로 스타일링했다. */
 .prev-stage-link {
-  display: block;
-  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--border);
+  font-size: 14px;
+  font-weight: 600;
   color: var(--text-dim);
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.prev-stage-link:hover {
+  color: var(--text);
+  border-color: var(--text-dim);
 }
 
 .prev-stage-link.is-disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.prev-stage-link.is-disabled:hover {
+  color: var(--text-dim);
+  border-color: var(--border);
 }
 
 /* --- 모바일: 화면 전환식 --- */
