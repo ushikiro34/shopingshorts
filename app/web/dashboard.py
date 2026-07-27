@@ -368,16 +368,49 @@ async def discover_extract_review_image(file: UploadFile = File(...)):
     return JSONResponse({"text": text})
 
 
+def _image_content_hash(url: str) -> str | None:
+    """이미지를 내려받아 MD5를 계산한다. 실패하면 None(그 이미지는 중복 판정에서 그냥 제외)."""
+    import hashlib
+
+    try:
+        return hashlib.md5(download_image(url)).hexdigest()
+    except ImageFetchError:
+        return None
+
+
 @router.get("/discover/{product_id}/image-candidates")
 def discover_image_candidates(product_id: str, keyword: str):
-    """네이버 쇼핑검색으로 후보 이미지 여러 개를 찾아 JS 피커에 보여준다 (JS fetch용)."""
+    """네이버 쇼핑검색으로 후보 이미지 여러 개를 찾아 JS 피커에 보여준다 (JS fetch용).
+
+    네이버는 같은 사진을 판매자마다 서로 다른 URL로 재호스팅하는 경우가 흔해서(실측 확인:
+    URL은 다른데 바이트 단위로 완전히 동일한 이미지), URL만 비교해서는 중복을 못 잡는다.
+    실제로 이미지를 내려받아 내용(MD5) 기준으로 중복을 걸러내고, 이미 상품에 추가해둔
+    이미지와 내용이 같은 것도 함께 제외한다.
+    """
     from app.discovery.naver_search import NaverSearchError, search_product_images
+
+    client = get_client()
+    product = client.table("products").select("image_urls").eq("id", product_id).execute().data[0]
+    already_added = product.get("image_urls") or []
 
     try:
         results = search_product_images(keyword)
     except NaverSearchError as exc:
         return JSONResponse({"error": str(exc)}, status_code=502)
-    return JSONResponse({"candidates": [{"image": r.image, "title": r.title} for r in results if r.image]})
+
+    seen_hashes = {h for h in (_image_content_hash(u) for u in already_added) if h}
+    seen_urls: set[str] = set()
+    candidates = []
+    for r in results:
+        if not r.image or r.image in seen_urls:
+            continue
+        seen_urls.add(r.image)
+        content_hash = _image_content_hash(r.image)
+        if content_hash is None or content_hash in seen_hashes:
+            continue
+        seen_hashes.add(content_hash)
+        candidates.append({"image": r.image, "title": r.title})
+    return JSONResponse({"candidates": candidates})
 
 
 @router.post("/discover/{product_id}/images/add")
