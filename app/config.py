@@ -37,6 +37,10 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "")
 
+# Gemini(나노바나나) 이미지 생성 — 씬의 화면 연출에 맞춰 실사 상품 사진을 참고 이미지로
+# 넣어 새 이미지를 만드는 데 쓴다 (app/media/image_generator.py).
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+
 # TTS 공급자 선택 — "elevenlabs" | "edge". ElevenLabs 무료 플랜은 라이브러리 보이스를
 # API로 못 쓰는 제약이 있어(docs/01_plan.md 2026-07-13 이력 참조), 기본값은 키 없이도
 # 바로 쓸 수 있는 edge-tts(Microsoft Edge 읽어주기 기능의 비공식 클라이언트)로 둔다.

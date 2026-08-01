@@ -48,9 +48,11 @@ class _FakeHttpxClient:
     def __init__(self, responses: list[_FakeResponse]):
         self._responses = list(responses)
         self.calls = 0
+        self.request_bodies: list[dict] = []
 
     def post(self, url, headers=None, json=None):
         self.calls += 1
+        self.request_bodies.append(json)
         return self._responses.pop(0)
 
 
@@ -120,6 +122,40 @@ def test_elevenlabs_synthesize_script_audio_includes_real_word_timings(monkeypat
     timings = results[0]["word_timings"]
     assert [w[0] for w in timings] == ["안녕", "반가워요"]
     assert timings[0][1] == 0.0  # 첫 단어는 0초부터 시작
+
+
+def test_elevenlabs_synthesize_script_audio_reads_capacity_unit_not_alphabet(monkeypatch, tmp_path):
+    # "20L"을 TTS가 "이십엘"(영어 알파벳 L)로 읽어버리는 문제(사용자 피드백) — 캡션에는
+    # "20L" 그대로 보여도, TTS로 보내는 텍스트는 "20리터"로 바뀌어야 한다.
+    monkeypatch.setattr(tts, "get_audio_duration_sec", lambda path: 1.5)
+    client = _FakeHttpxClient(
+        [_FakeResponse(200, json_body=_fake_alignment_json(b"AUDIO", ["이", "제품은"]))]
+    )
+    scenes = [{"seq": 1, "narration": "이 제품은 20L 용량이에요", "caption": "용량"}]
+
+    tts.synthesize_script_audio(scenes, str(tmp_path), client=client, provider="elevenlabs")
+
+    sent_text = client.request_bodies[0]["text"]
+    assert "20리터" in sent_text
+    assert "20L" not in sent_text
+
+
+def test_normalize_units_for_tts_converts_capacity_and_power_units():
+    assert tts.normalize_units_for_tts("20L 용량") == "20리터 용량"
+    assert tts.normalize_units_for_tts("500W 전력") == "500와트 전력"
+    assert tts.normalize_units_for_tts("1.5kg 무게") == "1.5킬로그램 무게"
+    assert tts.normalize_units_for_tts("30cm 높이") == "30센티미터 높이"
+
+
+def test_normalize_units_for_tts_leaves_model_code_alphabet_untouched():
+    # 모델코드(KNOV-C20)는 숫자 바로 뒤에 알파벳이 붙는 형태가 아니라 하이픈+알파벳
+    # 형태라 단위로 오인되면 안 된다 — 그대로 알파벳으로 읽혀야 한다.
+    assert tts.normalize_units_for_tts("키친아트 KNOV-C20 모델") == "키친아트 KNOV-C20 모델"
+
+
+def test_normalize_units_for_tts_handles_multiple_units_in_one_sentence():
+    result = tts.normalize_units_for_tts("20L, 500W, 1.5kg 스펙")
+    assert result == "20리터, 500와트, 1.5킬로그램 스펙"
 
 
 def test_elevenlabs_retries_once_then_succeeds(tmp_path):

@@ -14,7 +14,7 @@ import anthropic
 
 from app.config import ANTHROPIC_API_KEY
 from app.llm_utils import parse_json_response
-from app.media.images import download_image
+from app.media.images import download_image, guess_media_type
 
 MODEL = "claude-sonnet-4-5"
 
@@ -27,16 +27,6 @@ def _client() -> anthropic.Anthropic:
     if not ANTHROPIC_API_KEY:
         raise ImageMatchError("ANTHROPIC_API_KEY가 설정되지 않았습니다.")
     return anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-
-def _guess_media_type(image_bytes: bytes) -> str:
-    if image_bytes[:8] == b"\x89PNG\r\n\x1a\n":
-        return "image/png"
-    if image_bytes[:6] in (b"GIF87a", b"GIF89a"):
-        return "image/gif"
-    if image_bytes[:4] == b"RIFF" and image_bytes[8:12] == b"WEBP":
-        return "image/webp"
-    return "image/jpeg"
 
 
 def select_scene_images(
@@ -61,7 +51,7 @@ def select_scene_images(
                 "type": "image",
                 "source": {
                     "type": "base64",
-                    "media_type": _guess_media_type(image_bytes),
+                    "media_type": guess_media_type(image_bytes),
                     "data": base64.standard_b64encode(image_bytes).decode("utf-8"),
                 },
             }

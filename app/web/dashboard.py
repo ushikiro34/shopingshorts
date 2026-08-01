@@ -720,15 +720,16 @@ def media_generate_thumbnail(request: Request, render_job_id: str, product_id: s
     product = client.table("products").select("*").eq("id", script["product_id"]).execute().data[0]
 
     hook_text = script["script_json"]["structure"]["empathy"]
-    image_bytes = None
-    image_urls = product.get("image_urls") or []
-    if image_urls:
-        try:
-            image_bytes = download_image(image_urls[0])
-        except ImageFetchError:
-            image_bytes = None
-
     work_dir = os.path.join("renders", render_job_id)
+    # 후킹(첫 씬)에 실제 쓰인 스틸컷을 그대로 배경으로 써서, 썸네일 클릭 -> 영상 재생
+    # 시작 화면이 시각적으로 이어지도록 한다 — 상품 원본 사진을 쓰면 썸네일과 실제
+    # 영상 오프닝(문제 상황, 상품 미등장)이 서로 달라 어색했다(사용자 피드백).
+    hook_still_path = os.path.join(work_dir, "scene_1.jpg")
+    image_bytes = None
+    if os.path.exists(hook_still_path):
+        with open(hook_still_path, "rb") as f:
+            image_bytes = f.read()
+
     os.makedirs(work_dir, exist_ok=True)
     output_path = os.path.join(work_dir, "thumbnail.jpg")
     generate_thumbnail(hook_text, image_bytes, product.get("category"), output_path)

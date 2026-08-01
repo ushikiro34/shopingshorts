@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import re
 import subprocess
 import time
 
@@ -32,6 +33,39 @@ ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1/text-to-speech"
 ELEVENLABS_MODEL_ID = "eleven_multilingual_v2"
 
 WordTiming = tuple[str, float, float]
+
+# 숫자 바로 뒤에 붙는 단위 약어를 한글 단위명으로 바꿔서 TTS가 영어 알파벳처럼 읽지
+# 않게 한다(예: "20L" -> "이십엘"이 아니라 "20리터" -> "이십리터"로 읽혀야 함, 사용자
+# 피드백). 상품명 안의 모델코드(예: KNOV-C20)는 숫자 바로 뒤에 알파벳이 붙는 형태가
+# 아니라 하이픈+알파벳 형태라 이 패턴에 안 걸린다 — 모델코드는 그대로 알파벳으로 읽힌다.
+# 길이가 긴 약어부터 매칭해야 "kg"가 "g"로 잘못 걸리지 않는다.
+_UNIT_READINGS: list[tuple[str, str]] = [
+    ("kWh", "킬로와트시"),
+    ("kHz", "킬로헤르츠"),
+    ("kg", "킬로그램"),
+    ("kW", "킬로와트"),
+    ("mm", "밀리미터"),
+    ("mL", "밀리리터"),
+    ("ml", "밀리리터"),
+    ("cm", "센티미터"),
+    ("Hz", "헤르츠"),
+    ("W", "와트"),
+    ("V", "볼트"),
+    ("L", "리터"),
+    ("g", "그램"),
+]
+_UNIT_READING_MAP = dict(_UNIT_READINGS)
+_UNIT_PATTERN = re.compile(
+    r"(?<=\d)(" + "|".join(re.escape(unit) for unit, _ in _UNIT_READINGS) + r")(?![A-Za-z])"
+)
+
+
+def normalize_units_for_tts(text: str) -> str:
+    """숫자에 바로 붙은 단위 약어만 한글 단위명으로 바꾼다 (TTS 발음 교정 전용).
+
+    캡션/화면 표시 텍스트는 그대로 두고, TTS에 넘기는 텍스트에만 적용한다.
+    """
+    return _UNIT_PATTERN.sub(lambda m: _UNIT_READING_MAP[m.group(1)], text)
 
 
 class TTSError(RuntimeError):
@@ -231,7 +265,7 @@ def synthesize_script_audio(
         seq = scene["seq"]
         output_path = f"{output_dir}/scene_{seq}.mp3"
         _, word_timings = _synthesize_scene_audio_with_timings(
-            scene["narration"],
+            normalize_units_for_tts(scene["narration"]),
             output_path,
             voice_id=voice_id,
             client=client,

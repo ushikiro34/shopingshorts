@@ -8,6 +8,7 @@ from app.media.render import (
     build_hook_text_filter,
     build_scene_filter_complex,
     build_text_block_filter,
+    build_video_scene_filter_complex,
     build_xfade_filter_complex,
     build_zoompan_filter,
     calc_narration_speed,
@@ -49,26 +50,29 @@ def test_build_text_block_filter_contains_textfile_and_font_per_line():
     assert filt.count("drawtext=") == 2
 
 
-def test_build_text_block_filter_has_background_drawbox():
+def test_build_text_block_filter_has_no_background_box():
+    # 반투명 배경 박스가 화면을 답답하게 가린다는 피드백으로 제거하고, 대신 글자 자체에
+    # 외곽선을 둘러 배경 없이도 가독성을 확보한다.
     filt = build_text_block_filter(["line0.txt"], "font.ttf", bottom_margin=360, fontsize=54)
-    assert filt.startswith("drawbox=")
+    assert "drawbox=" not in filt
+    assert "bordercolor=black" in filt
+    assert "borderw=" in filt
 
 
-def test_build_text_block_filter_box_height_scales_with_line_count():
-    filt_1_line = build_text_block_filter(["a.txt"], "font.ttf", bottom_margin=360, fontsize=54)
-    filt_3_lines = build_text_block_filter(
-        ["a.txt", "b.txt", "c.txt"], "font.ttf", bottom_margin=360, fontsize=54
-    )
-    # 줄 수가 늘면 drawbox의 h(높이)도 커져야 한다 (1줄: 70+48=118, 3줄: 210+48=258)
-    assert "h=118" in filt_1_line
-    assert "h=258" in filt_3_lines
-
-
-def test_build_text_block_filter_enable_expr_applied_to_every_node():
+def test_build_text_block_filter_line_y_offset_scales_with_line_height():
     filt = build_text_block_filter(
-        ["d.txt"], "f.ttf", bottom_margin=140, fontsize=34, enable="gte(t,3)"
+        ["a.txt", "b.txt", "c.txt"], "font.ttf", bottom_margin=360, fontsize=54, line_height=42
     )
-    # drawbox 1개 + drawtext 1개 = enable이 2번 등장해야 한다
+    # 3줄, line_height=42 -> block_height=126, 각 줄 y는 h-360-126+{0,42,84}
+    assert "h-360-126+0" in filt
+    assert "h-360-126+42" in filt
+    assert "h-360-126+84" in filt
+
+
+def test_build_text_block_filter_enable_expr_applied_to_every_line():
+    filt = build_text_block_filter(
+        ["d.txt", "e.txt"], "f.ttf", bottom_margin=140, fontsize=34, enable="gte(t,3)"
+    )
     assert filt.count("enable='gte(t,3)'") == 2
 
 
@@ -95,6 +99,29 @@ def test_build_scene_filter_complex_with_disclosure_has_enable_gate(tmp_path):
     assert "disc.txt" in filt
     assert "enable=" in filt
     assert "gte(t,8.0)" in filt  # 10초 씬의 마지막 2초부터 노출
+
+
+def test_build_video_scene_filter_complex_has_no_zoompan(tmp_path):
+    # 실제 영상(Veo) 클립엔 이미 움직임이 있어 정지 이미지용 Ken Burns(zoompan)를 쓰면 안 된다.
+    font = resolve_font_path()
+    filt = build_video_scene_filter_complex("안녕 반가워요", font, str(tmp_path), "scene1")
+    assert "zoompan" not in filt
+    assert "[0:v]" in filt
+    assert "[outv]" in filt
+
+
+def test_build_video_scene_filter_complex_scales_to_canvas_size(tmp_path):
+    font = resolve_font_path()
+    filt = build_video_scene_filter_complex("안녕 반가워요", font, str(tmp_path), "scene1")
+    assert "scale=1080:1920" in filt
+
+
+def test_build_video_scene_filter_complex_with_hook_text_no_caption(tmp_path):
+    # 첫 씬은 하단 자막을 생략하고 상단 후킹 문구만 넣을 수 있어야 한다.
+    font = resolve_font_path()
+    filt = build_video_scene_filter_complex("", font, str(tmp_path), "scene1", hook_text="이거 실화냐")
+    assert "scene1.hook.line0.txt" in filt
+    assert "scene1.caption.line0.txt" not in filt
 
 
 def test_build_animated_caption_filter_has_background_drawbox(tmp_path):
@@ -133,7 +160,7 @@ def test_build_animated_caption_filter_writes_full_line_text_to_file(tmp_path):
 
 
 def test_calc_narration_speed_matches_target_within_clamp_range():
-    # 실제 6초 오디오를 목표 5초에 맞추려면 1.2배가 필요하고, clamp 범위(0.85~1.3) 안이라 그대로 쓰인다.
+    # 실제 6초 오디오를 목표 5초에 맞추려면 1.2배가 필요하고, clamp 범위(0.95~1.3) 안이라 그대로 쓰인다.
     speed = calc_narration_speed(actual_duration_sec=6.0, target_duration_sec=5.0)
     assert speed == 1.2
 
@@ -148,6 +175,15 @@ def test_calc_narration_speed_clamps_when_target_much_longer_than_actual():
     # 2초짜리 오디오를 10초로 늘리려면 0.2배가 필요하지만 부자연스러워 MIN으로 clamp된다.
     speed = calc_narration_speed(actual_duration_sec=2.0, target_duration_sec=10.0)
     assert speed == MIN_NARRATION_SPEED
+
+
+def test_calc_narration_speed_short_cta_line_does_not_slow_down_much():
+    # 실측 회귀 테스트: "제품정보는 본문에 있어요, 확인해보세요." 실제 TTS 길이 3.34초를
+    # 대본이 잡은 4초에 맞추려면 0.835배가 필요했는데, 예전 하한(0.85)에 걸려도 여전히
+    # 눈에 띄게 느렸다는 피드백으로 하한을 0.95로 좁혔다.
+    speed = calc_narration_speed(actual_duration_sec=3.34, target_duration_sec=4.0)
+    assert speed == MIN_NARRATION_SPEED
+    assert speed >= 0.95
 
 
 def test_calc_narration_speed_falls_back_when_target_missing_or_invalid():
@@ -215,6 +251,49 @@ def test_build_hook_text_filter_writes_lines_and_draws_text(tmp_path):
     filt = build_hook_text_filter("이거 실화냐", font, str(tmp_path), "scene1")
     assert "drawtext=" in filt
     assert "bordercolor=black" in filt
+
+
+def test_build_hook_text_filter_without_product_name_has_single_drawtext(tmp_path):
+    font = resolve_font_path()
+    filt = build_hook_text_filter("이거 실화냐", font, str(tmp_path), "scene1")
+    assert filt.count("drawtext=") == 1
+
+
+def test_build_hook_text_filter_with_product_name_adds_second_line(tmp_path):
+    # 3단 레이아웃 절충안(사용자 피드백): 상단에 후킹 문구 + 제품명을 함께 노출.
+    font = resolve_font_path()
+    filt = build_hook_text_filter(
+        "이거 실화냐", font, str(tmp_path), "scene1", product_name="테스트 상품 20L"
+    )
+    assert filt.count("drawtext=") == 2
+    assert "scene1.hook_product.txt" in filt
+    with open(os.path.join(str(tmp_path), "scene1.hook_product.txt"), encoding="utf-8") as f:
+        assert f.read() == "테스트 상품 20L"
+
+
+def test_build_text_block_filter_supports_custom_fontcolor_and_outline(tmp_path):
+    filt = build_text_block_filter(
+        ["line0.txt"], "font.ttf", bottom_margin=190, fontsize=32,
+        fontcolor="0xFFE600", outline_width=3,
+    )
+    assert "fontcolor=0xFFE600" in filt
+    assert "borderw=3" in filt
+
+
+def test_build_scene_filter_complex_with_sticky_cta_text(tmp_path):
+    font = resolve_font_path()
+    filt = build_scene_filter_complex(
+        5.0, "안녕 반가워요", font, str(tmp_path), "scene2", sticky_cta_text="지금 확인해보세요"
+    )
+    assert "scene2.sticky_cta.line0.txt" in filt
+
+
+def test_build_video_scene_filter_complex_with_sticky_cta_text(tmp_path):
+    font = resolve_font_path()
+    filt = build_video_scene_filter_complex(
+        "안녕 반가워요", font, str(tmp_path), "scene1", sticky_cta_text="지금 확인해보세요"
+    )
+    assert "scene1.sticky_cta.line0.txt" in filt
 
 
 def test_build_xfade_filter_complex_chains_all_clips():

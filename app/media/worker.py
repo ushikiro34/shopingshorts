@@ -11,10 +11,17 @@ import time
 from datetime import datetime, timezone
 
 from app.db import get_client
-from app.media.graphics import compose_educational_note_scene, draw_icon
-from app.media.images import compose_scene_image, download_image, save_jpeg
+from app.media.graphics import compose_educational_note_scene
+from app.media.image_generator import ImageGenerationError, generate_scene_image
+from app.media.images import compose_scene_image, download_image, guess_media_type, save_jpeg
 from app.media.render import (
+    CAPTION_BOTTOM_MARGIN,
+    CAPTION_FONTSIZE,
+    CTA_CAPTION_BOTTOM_MARGIN,
+    CTA_CAPTION_FONTSIZE,
+    CTA_CAPTION_LINE_HEIGHT,
     HEIGHT,
+    TEXT_LINE_HEIGHT,
     WIDTH,
     RenderError,
     calc_narration_speed,
@@ -23,16 +30,23 @@ from app.media.render import (
     pad_audio_with_silence,
     pick_bgm_track,
     render_scene_clip,
+    render_video_scene_clip,
     resolve_font_path,
     speed_up_audio,
 )
 from app.media.tts import TTSError, synthesize_script_audio
+from app.media.video_generator import VideoGenerationError, generate_scene_video
 
 WORK_ROOT_DEFAULT = "renders"
 # 씬(단락)이 곧바로 이어져 나레이션이 부자연스럽던 문제 — 각 씬 사이에 숨 고를 무음
 # 구간을 넣는다. 크로스페이드 전환 시간(TRANSITION_DURATION_SEC=0.4)보다 커야 실제
 # 목소리끼리 겹치지 않는다.
 SCENE_GAP_SEC = 1.0
+
+# 대본 구조(app/script/prompts.py) 중 아직 상품이 등장하면 안 되는 "문제 상황" 단계 —
+# 이 단계 씬은 상품 참고 이미지를 넘기지 않는다(사용자 피드백: 광고 대상 상품이 문제
+# 상황 장면에 잘못 등장함). solution 단계부터가 실제 상품이 해결책으로 "공개"되는 지점.
+PRE_REVEAL_STAGES = {"empathy", "emotion", "problem"}
 
 
 def _now_iso() -> str:
@@ -52,35 +66,82 @@ def _scene_uses_educational_graphic(scene_narration: str, educational_note_text:
     return snippet in scene_narration or scene_narration in educational_note_text
 
 
-def build_cta_icon_png(work_dir: str) -> str:
-    """마지막(구매 유도) 씬에 얹을 체크 아이콘을 별도 투명 PNG로 저장한다.
+def build_scene_image(
+    scene: dict,
+    product: dict,
+    script_json: dict,
+    work_dir: str,
+    character_ref: tuple[bytes, str] | None = None,
+) -> tuple[str, tuple[bytes, str] | None]:
+    """씬 하나의 배경 이미지를 결정해 JPEG로 저장하고, (경로, 갱신된 character_ref)를 반환한다.
 
-    상품 사진에 직접 합성하면 Ken Burns 확대/이동에 같이 크롭돼 랜덤 팬 방향에 따라
-    화면 밖으로 밀려날 수 있어서, ffmpeg overlay로 줌 이후 단계에 얹을 수 있게 분리했다.
+    character_ref는 이 영상에서 처음 생성에 성공한 이미지를 담아뒀다가 이후 씬 생성 때마다
+    함께 참고 이미지로 넘긴다 — 씬마다 독립적으로 생성하면 등장인물이 매번 다른 사람으로
+    바뀌는 문제(사용자 피드백)가 있어서, 같은 인물이 이어지도록 유도한다.
+
+    scene["stage"]가 PRE_REVEAL_STAGES(공감/문제 단계)에 속하면 상품 참고 이미지를 넘기지
+    않는다 — 광고 대상 상품이 아직 해결책으로 등장하면 안 되는 "문제 상황" 장면에 그대로
+    나와버리는 문제(사용자 피드백)가 있었다.
     """
-    icon = draw_icon("check", size=150, color=(255, 230, 0, 255))
-    path = os.path.join(work_dir, "cta_icon.png")
-    icon.save(path)
-    return path
-
-
-def build_scene_image(scene: dict, product: dict, script_json: dict, work_dir: str) -> str:
-    """씬 하나의 배경 이미지를 결정해 JPEG로 저장하고 경로를 반환한다."""
     educational_text = (script_json.get("educational_note") or {}).get("text", "")
     use_graphic = _scene_uses_educational_graphic(scene.get("narration", ""), educational_text)
 
     image_urls = product.get("image_urls") or []
     category = product.get("category")
+    is_pre_reveal = scene.get("stage") in PRE_REVEAL_STAGES
 
     if use_graphic or not image_urls:
         composed = compose_educational_note_scene((WIDTH, HEIGHT), category=category)
     else:
         idx = scene.get("image_index", 0) % len(image_urls)
-        image_bytes = download_image(image_urls[idx])
-        composed = compose_scene_image(image_bytes)
+        reference_bytes = download_image(image_urls[idx])
+        product_reference = None if is_pre_reveal else (reference_bytes, guess_media_type(reference_bytes))
+        # 실사 사진을 참고 이미지로 Gemini에 넣어, 상품의 실제 모습은 유지하면서 그 씬의
+        # 화면 연출(visual)에 맞는 장면으로 재구성한다 — 실사 사진 그대로 쓰면 판매
+        # 리스팅에 이미 박힌 타 마케팅 문구가 함께 찍히고, 화면 연출과 안 맞는 경우가 많아서
+        # 도입했다(사용자 피드백).
+        try:
+            image_bytes, media_type = generate_scene_image(
+                scene.get("visual", ""),
+                scene.get("narration", ""),
+                product.get("product_name", ""),
+                product_reference=product_reference,
+                character_reference=character_ref,
+            )
+            if character_ref is None:
+                character_ref = (image_bytes, media_type)
+            composed = compose_scene_image(image_bytes)
+        except ImageGenerationError:
+            if is_pre_reveal:
+                # 생성 실패 폴백으로 실사 상품 사진을 쓰면 광고 대상 상품이 "문제 상황"
+                # 장면에 등장해버리는 원래 문제가 재발한다 — 2D 그래픽 카드로 대신한다.
+                composed = compose_educational_note_scene((WIDTH, HEIGHT), category=category)
+            else:
+                composed = compose_scene_image(reference_bytes)
 
     path = os.path.join(work_dir, f"scene_{scene['seq']}.jpg")
-    return save_jpeg(composed, path)
+    return save_jpeg(composed, path), character_ref
+
+
+def build_scene_video(scene: dict, image_path: str, work_dir: str) -> str | None:
+    """이미 만든 씬 스틸컷(image_path)을 시작 프레임으로 Veo 영상을 생성해 저장한다.
+
+    실패하면(시간 초과, API 오류 등) None을 반환한다 — 호출부가 기존 정지 이미지+Ken Burns
+    방식으로 폴백한다. 몇 분씩 걸릴 수 있는 작업 전체를 재시도하면 렌더링이 너무 오래 걸려서
+    generate_scene_video 자체엔 재시도가 없다. 어느 씬에 적용할지는 호출부(render_script)가
+    정한다 — 정지 사진+팬만으로는 일부 씬이 어색해 보인다는 피드백으로, 우선 임팩트가 가장
+    큰 후킹(첫 씬)에만 시범 적용하기로 했다(사용자와 논의해 범위 확정).
+    """
+    with open(image_path, "rb") as f:
+        image_bytes = f.read()
+    try:
+        video_bytes = generate_scene_video(image_bytes, "image/jpeg", scene.get("visual", ""), scene.get("narration", ""))
+    except VideoGenerationError:
+        return None
+    path = os.path.join(work_dir, f"scene_{scene['seq']}.mp4")
+    with open(path, "wb") as f:
+        f.write(video_bytes)
+    return path
 
 
 def render_script(
@@ -100,10 +161,22 @@ def render_script(
         status_callback("generating_images")
     last_seq = scenes[-1]["seq"]
     first_seq = scenes[0]["seq"]
-    image_paths = {
-        scene["seq"]: build_scene_image(scene, product, script_json, work_dir) for scene in scenes
-    }
-    icon_path = build_cta_icon_png(work_dir)
+    image_paths = {}
+    character_ref: tuple[bytes, str] | None = None
+    for scene in scenes:
+        path, character_ref = build_scene_image(scene, product, script_json, work_dir, character_ref)
+        image_paths[scene["seq"]] = path
+
+    # 후킹(첫 씬)만 시범적으로 실제 영상(Veo)으로 애니메이션한다 — 몇 분 걸릴 수 있어 별도
+    # 상태 단계로 알린다. 실패하면 video_paths에 안 담기고, 아래 조립 루프가 기존 정지
+    # 이미지+Ken Burns 방식으로 자동 폴백한다.
+    if status_callback:
+        status_callback("generating_video")
+    video_paths: dict[int, str] = {}
+    first_scene = scenes[0]
+    video_path = build_scene_video(first_scene, image_paths[first_seq], work_dir)
+    if video_path:
+        video_paths[first_seq] = video_path
 
     if status_callback:
         status_callback("generating_audio")
@@ -114,6 +187,9 @@ def render_script(
         status_callback("assembling")
     clip_paths = []
     clip_durations = []
+    # 마지막 씬 caption은 이미 CTA 문구로 각색돼 있다 — 3단 레이아웃 절충안(사용자 피드백)의
+    # 하단 상시노출 CTA 배너에 그대로 재사용한다.
+    sticky_cta_source_text = scenes[-1]["caption"]
     for scene in scenes:
         seq = scene["seq"]
         clip_path = os.path.join(work_dir, f"clip_{seq}.mp4")
@@ -137,19 +213,54 @@ def render_script(
             audio_path = pad_audio_with_silence(audio_path, SCENE_GAP_SEC, padded_path)
             duration = raw_duration + SCENE_GAP_SEC
 
-        # 자막은 나레이션 원문이 아니라 짧게 각색된 caption 문구를 보여준다.
-        render_scene_clip(
-            image_paths[seq],
-            audio_path,
-            duration,
-            scene["caption"],
-            clip_path,
-            work_dir,
-            font_path=font,
-            disclosure_text=script_json["disclosure"] if seq == last_seq else None,
-            hook_text=scene["caption"] if seq == first_seq else None,
-            icon_path=icon_path if seq == last_seq else None,
+        # 자막은 나레이션 원문이 아니라 짧게 각색된 caption 문구를 보여준다. 마지막 씬은
+        # CTA 문구라 일반 자막보다 작게, 화면 더 아래쪽에 배치한다(사용자 피드백). 첫 씬은
+        # 상단 후킹 문구로 같은 caption을 이미 보여주므로 하단 자막은 생략한다 — 위아래에
+        # 똑같은 문장이 중복으로 뜨는 게 어색하다는 피드백.
+        is_last = seq == last_seq
+        is_first = seq == first_seq
+        is_pre_reveal = scene.get("stage") in PRE_REVEAL_STAGES
+        caption_text = "" if is_first else scene["caption"]
+        hook_text = scene["caption"] if is_first else None
+        # 상단(후킹+제품명)/중간(영상)/하단(자막+상시CTA) 3단 레이아웃 절충안(사용자 피드백).
+        # 제품명은 후킹 씬에만, 상시 CTA 배너는 상품이 아직 등장하지 않는 pre-reveal 단계와
+        # 이미 자체 CTA 자막인 마지막 씬을 제외한 나머지 씬에만 보여준다.
+        product_name = product.get("product_name") if is_first else None
+        sticky_cta_text = None if (is_first or is_last or is_pre_reveal) else sticky_cta_source_text
+        caption_kwargs = dict(
+            caption_fontsize=CTA_CAPTION_FONTSIZE if is_last else CAPTION_FONTSIZE,
+            caption_bottom_margin=CTA_CAPTION_BOTTOM_MARGIN if is_last else CAPTION_BOTTOM_MARGIN,
+            caption_line_height=CTA_CAPTION_LINE_HEIGHT if is_last else TEXT_LINE_HEIGHT,
         )
+        if seq in video_paths:
+            render_video_scene_clip(
+                video_paths[seq],
+                audio_path,
+                duration,
+                caption_text,
+                clip_path,
+                work_dir,
+                font_path=font,
+                hook_text=hook_text,
+                product_name=product_name,
+                sticky_cta_text=sticky_cta_text,
+                **caption_kwargs,
+            )
+        else:
+            render_scene_clip(
+                image_paths[seq],
+                audio_path,
+                duration,
+                caption_text,
+                clip_path,
+                work_dir,
+                font_path=font,
+                disclosure_text=script_json["disclosure"] if is_last else None,
+                hook_text=hook_text,
+                product_name=product_name,
+                sticky_cta_text=sticky_cta_text,
+                **caption_kwargs,
+            )
         clip_paths.append(clip_path)
         clip_durations.append(duration)
 
