@@ -1,6 +1,6 @@
 """5호 직원 — 썸네일 생성 (Phase 4).
 
-대본의 훅 텍스트(structure.empathy 또는 suggested_hook_angle) + 상품 실사 이미지로
+대본의 훅 텍스트(형식의 첫 단계 structure 값 또는 suggested_hook_angle) + 상품 실사 이미지로
 유튜브 쇼츠 커버용 썸네일(1080x1920)을 만든다. AI 이미지 생성은 쓰지 않는다
 (로드맵에서 완전 제외 — docs/00_project_overview.md 리스크 원칙 참조).
 """

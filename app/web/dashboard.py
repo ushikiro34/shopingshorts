@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Form, Request, UploadFile, File
+from fastapi import APIRouter, Form, HTTPException, Request, UploadFile, File
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from app.config import DEFAULT_HOLD_MINUTES, PARTNERS_DISCLOSURE, SCRIPT_TONES
+from app.config import DEFAULT_FONT_KEY, DEFAULT_HOLD_MINUTES, FONT_LABELS, FONT_REGISTRY, PARTNERS_DISCLOSURE
+from app.script.formats import active_tone_choices, get_format
 from app.db import get_client
 from app.discovery.education import detect_needs_education
 from app.discovery.scoring import (
@@ -31,6 +32,18 @@ from app.discovery.scoring import (
 )
 from app.discovery.story_heuristic import count_emotional_keywords
 from app.media.images import ImageFetchError, download_image
+from app.media.render import (
+    CAPTION_FONTSIZE,
+    CTA_CAPTION_FONTSIZE,
+    HEIGHT,
+    HOOK_FONTSIZE,
+    STICKY_CTA_FONTSIZE,
+    WIDTH,
+    RenderError,
+    recomposite_captions,
+    resolve_font_path,
+    resolve_scene_text_elements,
+)
 from app.media.thumbnail import generate_thumbnail
 from app.review.analyzer import ReviewAnalysisError, analyze_reviews
 from app.review.ocr import ReviewOcrError, extract_review_text
@@ -41,7 +54,9 @@ from app.upload.publisher import PublishError, publish_video
 from app.web.auth import current_user, sign_in
 from app.web.auth import AuthError
 
+import json
 import os
+import re
 
 router = APIRouter(tags=["web"])
 templates = Jinja2Templates(directory="app/web/templates")
@@ -54,6 +69,7 @@ templates.env.globals["static_version"] = lambda: int(
 
 DISCOVER_STATUSES = ["discovered", "scored", "reviews_collected"]
 SCRIPT_STATUSES = ["analyzed", "script_generated"]
+PROMPT_STATUSES = ["prompt_review"]
 MEDIA_STATUSES = ["script_approved", "media_generated", "thumbnail_generated"]
 
 
@@ -83,6 +99,7 @@ def _counts(client) -> dict:
     return {
         "discover": _count(DISCOVER_STATUSES),
         "script": _count(SCRIPT_STATUSES),
+        "prompts": _count(PROMPT_STATUSES),
         "media": _count(MEDIA_STATUSES),
         "publish": len(client.table("upload_queue").select("id").in_("status", ["pending_review", "ready_to_publish"]).execute().data),
     }
@@ -124,6 +141,7 @@ _STATUS_LABELS = {
     "reviews_collected": "리뷰수집",
     "analyzed": "분석완료",
     "script_generated": "대본생성",
+    "prompt_review": "프롬프트확인중",
     "script_approved": "대본승인",
     "media_generated": "미디어제작",
     "thumbnail_generated": "썸네일완료",
@@ -138,6 +156,7 @@ _STATUS_TIER = {
     "reviews_collected": 1,
     "analyzed": 2,
     "script_generated": 2,
+    "prompt_review": 2,
     "script_approved": 3,
     "media_generated": 3,
     "thumbnail_generated": 4,
@@ -151,13 +170,65 @@ def _status_tab(status: str | None) -> str:
         return "discover"
     if status in SCRIPT_STATUSES:
         return "scripts"
+    if status in PROMPT_STATUSES:
+        return "prompts"
     if status in MEDIA_STATUSES:
         return "media"
     return "publish"
 
 
+def _thumbnail_url_by_product_id(client, product_ids: list[str]) -> dict[str, str]:
+    """상품별로 미디어제작에서 생성한 썸네일(있으면) URL을 매핑해서 돌려준다.
+
+    products -> scripts -> render_jobs -> thumbnails 체인이라 한 번에 조인할 수 없어
+    벌크 조회 두 번(scripts, render_jobs+thumbnails)으로 매핑을 만든다 — 상품마다
+    개별 쿼리하면 최근 프로젝트 개수만큼 N배로 늘어난다.
+    """
+    if not product_ids:
+        return {}
+    scripts = client.table("scripts").select("id, product_id").in_("product_id", product_ids).execute().data
+    script_id_to_product_id = {s["id"]: s["product_id"] for s in scripts}
+    if not script_id_to_product_id:
+        return {}
+
+    render_jobs = (
+        client.table("render_jobs")
+        .select("id, script_id")
+        .in_("script_id", list(script_id_to_product_id.keys()))
+        .execute()
+        .data
+    )
+    render_job_id_to_product_id = {
+        rj["id"]: script_id_to_product_id[rj["script_id"]] for rj in render_jobs
+    }
+    if not render_job_id_to_product_id:
+        return {}
+
+    thumbnails = (
+        client.table("thumbnails")
+        .select("render_job_id, image_path, created_at")
+        .in_("render_job_id", list(render_job_id_to_product_id.keys()))
+        .eq("status", "done")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+    url_by_product_id: dict[str, str] = {}
+    for t in thumbnails:
+        product_id = render_job_id_to_product_id.get(t["render_job_id"])
+        # 정렬이 최신순이라 상품당 처음 만나는 썸네일이 가장 최근 것 — 그 이후는 무시한다.
+        if product_id and product_id not in url_by_product_id and t.get("image_path"):
+            url_by_product_id[product_id] = "/" + t["image_path"].replace("\\", "/")
+    return url_by_product_id
+
+
 def _recent_projects(client, limit: int = 6) -> list[dict]:
-    """대시보드 하단 '최근 프로젝트' 리스트 — 상품을 최근 생성순으로 보여준다."""
+    """대시보드 하단 '최근 프로젝트' 리스트 — 상품을 최근 생성순으로 보여준다.
+
+    미디어제작에서 썸네일을 생성한 상품은 원본 상품 사진 대신 그 썸네일을 보여준다
+    (사용자 피드백) — 실제로 게시될 영상 표지와 대시보드 카드가 다르게 보이는 문제를
+    없앤다.
+    """
     rows = (
         client.table("products")
         .select("id, product_name, category, status, total_score, image_urls, created_at")
@@ -166,10 +237,12 @@ def _recent_projects(client, limit: int = 6) -> list[dict]:
         .execute()
         .data
     )
+    thumbnail_url_by_product_id = _thumbnail_url_by_product_id(client, [r["id"] for r in rows])
     projects = []
     for r in rows:
         status = r.get("status")
         image_urls = r.get("image_urls") or []
+        thumbnail_url = thumbnail_url_by_product_id.get(r["id"])
         projects.append(
             {
                 "id": r["id"],
@@ -178,7 +251,7 @@ def _recent_projects(client, limit: int = 6) -> list[dict]:
                 "status_label": _STATUS_LABELS.get(status, status or "-"),
                 "status_tier": _STATUS_TIER.get(status, 1),
                 "score": r.get("total_score") or 0,
-                "image_url": image_urls[0] if image_urls else None,
+                "image_url": thumbnail_url or (image_urls[0] if image_urls else None),
                 "tab": _status_tab(status),
                 "created_date": (r.get("created_at") or "")[:10],
             }
@@ -233,6 +306,10 @@ def logout(request: Request):
 
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
+    if current_user(request) is None:
+        # "/"는 is_public_path()에서 예외적으로 공개 경로 취급된다 — 로그인 전에는
+        # 마케팅 랜딩페이지를, 로그인 후에는 대시보드를 보여주도록 여기서 직접 가른다.
+        return templates.TemplateResponse("landing.html", {"request": request})
     client = get_client()
     ctx = _base_ctx(request, client)
     counts = _counts(client)
@@ -252,7 +329,8 @@ def home(request: Request):
             "daily_goal": 3,
             "uploaded_today": uploaded_today,
             "today_label": f"{now.year}년 {now.month}월 {now.day}일",
-            "recent_projects": _recent_projects(client),
+            # 대시보드는 처음엔 4개만 보여주고 "더보기"로 나머지를 펼친다 — 넉넉히 8개까지 미리 가져온다.
+            "recent_projects": _recent_projects(client, limit=8),
         }
     )
     return templates.TemplateResponse("home.html", ctx)
@@ -559,7 +637,8 @@ def scripts_tab(request: Request, selected: str | None = None, view: str = "list
             "products": products,
             "selected": selected_product,
             "script": latest_script,
-            "tones": SCRIPT_TONES,
+            "tones": active_tone_choices(),
+            "format": get_format(latest_script["tone"]) if latest_script else None,
             "view": view if selected_product else "list",
         }
     )
@@ -615,28 +694,25 @@ def scripts_generate(request: Request, product_id: str, tone: str = Form(...)):
 
 
 @router.post("/scripts/{script_id}/edit")
-def scripts_edit(
-    request: Request,
-    script_id: str,
-    product_id: str = Form(...),
-    empathy: str = Form(""),
-    emotion: str = Form(""),
-    problem: str = Form(""),
-    solution: str = Form(""),
-    result: str = Form(""),
-    product: str = Form(""),
-):
+async def scripts_edit(request: Request, script_id: str):
+    form = await request.form()
+    product_id = form.get("product_id", "")
+    if not product_id:
+        raise HTTPException(status_code=422, detail="product_id는 필수입니다.")
+
     client = get_client()
     existing = client.table("scripts").select("*").eq("id", script_id).execute().data[0]
     script_json = existing["script_json"]
-    script_json["structure"] = {
-        "empathy": empathy,
-        "emotion": emotion,
-        "problem": problem,
-        "solution": solution,
-        "result": result,
-        "product": product,
-    }
+    fmt = get_format(script_json.get("tone"))
+    # 서버가 조회한 이 대본 형식의 stage 목록만 신뢰한다 — 클라이언트가 임의 필드명을
+    # 보내도 구조에 반영되지 않는다.
+    script_json["structure"] = {key: form.get(f"stage__{key}", "") for key in fmt.stage_keys}
+    # 씬별 화면연출(visual) 편집 — 서버가 이미 알고 있는 seq만 신뢰해서 그 scene의 값만
+    # 갱신한다(사용자 피드백: 대본작성 시 씬별 화면 컨셉을 직접 수정하고 싶다).
+    for scene in script_json.get("scenes") or []:
+        field_name = f"visual__{scene['seq']}"
+        if field_name in form:
+            scene["visual"] = form.get(field_name, scene.get("visual", ""))
     client.table("scripts").update(
         {"script_json": script_json, "version": existing["version"] + 1}
     ).eq("id", script_id).execute()
@@ -649,13 +725,232 @@ def scripts_edit(
 def scripts_approve(request: Request, script_id: str, product_id: str = Form(...)):
     client = get_client()
     client.table("scripts").update({"approved": True}).eq("id", script_id).execute()
-    client.table("render_jobs").insert({"script_id": script_id, "status": "queued"}).execute()
+    # 승인 즉시 렌더를 큐잉하지 않는다 — 씬별 스틸컷/후킹 영상을 먼저 확인·재생성하고
+    # 확정해야 실제 렌더가 시작된다(사용자 피드백: 대본작성과 미디어제작 사이에 프롬프트를
+    # 확인하는 단계가 필요하다). 이 단계는 "프롬프트 확인" 탭(prompt_review 상태)에서
+    # 진행하고, 확정(prompts_confirm)해야 비로소 script_approved로 넘어가 미디어제작
+    # 탭에 노출된다 — 그전에 노출되면 확인/수정 과정에서 렌더 비용이 이중지출된다는
+    # 피드백으로 분리했다.
+    client.table("products").update({"status": "prompt_review"}).eq("id", product_id).execute()
+    # 04_ui_spec.md: 다음 탭으로 강제 이동하지 않는다 — 토스트만 안내하고 대본작성 탭에
+    # 머문다. 준비되면 사이드바의 "프롬프트 확인" 탭에서 언제든 다시 들어올 수 있다.
+    return RedirectResponse(
+        "/scripts?toast=승인+완료!+프롬프트+확인+탭에서+확인해주세요", status_code=302
+    )
+
+
+# --- 프롬프트 확인 탭 (씬별 프롬프트 확인/재생성, 후킹 포함 전체 씬) ---
+
+
+@router.get("/prompts", response_class=HTMLResponse)
+def prompts_tab(request: Request, selected: str | None = None, view: str = "list"):
+    client = get_client()
+    ctx = _base_ctx(request, client)
+    products = (
+        client.table("products")
+        .select("*")
+        .in_("status", PROMPT_STATUSES)
+        .order("updated_at", desc=True)
+        .execute()
+        .data
+    )
+    selected_product = None
+    latest_script = None
+    if selected:
+        found = [p for p in products if p["id"] == selected]
+        if found:
+            selected_product = found[0]
+        else:
+            # 확인 큐를 벗어난 상품(이미 확정했거나 이전 단계로 돌아간 경우)도 다시
+            # 확인하러 돌아올 수 있으니 상태와 무관하게 직접 조회한다.
+            other = client.table("products").select("*").eq("id", selected).execute().data
+            selected_product = other[0] if other else None
+        if selected_product:
+            scripts = (
+                client.table("scripts")
+                .select("*")
+                .eq("product_id", selected)
+                .order("created_at", desc=True)
+                .limit(1)
+                .execute()
+                .data
+            )
+            latest_script = scripts[0] if scripts else None
+
+    ctx.update({"active": "prompts", "counts": _counts(client), "products": products, "selected": selected_product})
+    if not latest_script:
+        ctx.update({"script": None, "view": view if selected_product else "list"})
+        return templates.TemplateResponse("tab_prompts.html", ctx)
+
+    script = latest_script
+    script_json = script["script_json"]
+    scenes = script_json["scenes"]
+    first_seq = scenes[0]["seq"]
+    fmt = get_format(script_json.get("tone"))
+
+    jobs = (
+        client.table("render_jobs")
+        .select("*")
+        .eq("script_id", script["id"])
+        .eq("kind", "hook_preview")
+        .order("created_at", desc=True)
+        .execute()
+        .data
+    )
+    # target_seq별 최신 job만 남긴다(desc 정렬이라 먼저 만나는 게 최신) — null(=후킹)도 키로 취급.
+    latest_job_by_seq: dict[int | None, dict] = {}
+    for job in jobs:
+        seq = job.get("target_seq")
+        if seq not in latest_job_by_seq:
+            latest_job_by_seq[seq] = job
+
+    hook_preview_status = script.get("hook_preview_status")
+    scene_previews = script.get("scene_preview_images") or {}
+
+    scene_cards = []
+    for scene in scenes:
+        seq = scene["seq"]
+        is_hook = seq == first_seq
+        job = latest_job_by_seq.get(None if is_hook else seq)
+        in_progress = bool(job) and job["status"] not in ("done", "failed")
+        if is_hook:
+            status = hook_preview_status
+            image_path = script.get("hook_preview_image_path")
+            video_path = script.get("hook_preview_video_path")
+        else:
+            info = scene_previews.get(str(seq)) or {}
+            status = info.get("status")
+            image_path = info.get("image_path")
+            video_path = None
+        scene_cards.append(
+            {
+                "seq": seq,
+                "visual": scene.get("visual", ""),
+                "narration": scene.get("narration", ""),
+                "is_hook": is_hook,
+                "is_pre_reveal": scene.get("stage") in fmt.pre_reveal_stages,
+                "status": status,
+                "image_path": image_path,
+                "video_path": video_path,
+                "in_progress": in_progress,
+                "error": job.get("error_message") if job and job["status"] == "failed" else None,
+                # 후킹이 아직 확정 안 됐으면 다른 씬은 만들 수 없게 막는다 — 인물 참조를
+                # 항상 후킹 이미지에서만 가져오기 위한 제약(일관성 유지, 사용자 피드백).
+                "locked": (not is_hook) and hook_preview_status != "done",
+            }
+        )
+
+    ctx.update(
+        {
+            "format": fmt,
+            "scene_cards": scene_cards,
+            "hook_preview_status": hook_preview_status,
+            "hook_preview_in_progress": bool(latest_job_by_seq.get(None)) and latest_job_by_seq[None]["status"] not in ("done", "failed"),
+            "view": view if selected_product else "list",
+        }
+    )
+    ctx["script"] = script
+    return templates.TemplateResponse("tab_prompts.html", ctx)
+
+
+@router.post("/prompts/{script_id}/generate")
+async def prompts_generate(request: Request, script_id: str):
+    form = await request.form()
+    product_id = form.get("product_id", "")
+    if not product_id:
+        raise HTTPException(status_code=422, detail="product_id는 필수입니다.")
+    target_seq = form.get("target_seq")
+    target_seq = int(target_seq) if target_seq else None
+
+    client = get_client()
+    existing = client.table("scripts").select("*").eq("id", script_id).execute().data[0]
+    script_json = existing["script_json"]
+    scenes = script_json["scenes"]
+    first_seq = scenes[0]["seq"]
+    is_hook = target_seq is None or target_seq == first_seq
+    if not is_hook and existing.get("hook_preview_status") != "done":
+        # 버튼은 이미 비활성화돼 있지만, API 레벨에서도 이중으로 막는다(일관성 유지 원칙).
+        return RedirectResponse(
+            f"/prompts?selected={product_id}&view=detail&toast=먼저+후킹+미리보기를+완료해주세요",
+            status_code=302,
+        )
+    scene = scenes[0] if is_hook else next(s for s in scenes if s["seq"] == target_seq)
+    # 화면 연출/나레이션만 수정 대상이다 — 사용자가 직접 확인 후 재생성해보고 싶은 텍스트가
+    # 이 두 가지라(사용자와 논의해 범위 확정), 여기서만 갱신한다.
+    if "visual" in form:
+        scene["visual"] = form.get("visual", scene.get("visual", ""))
+    if "narration" in form:
+        scene["narration"] = form.get("narration", scene.get("narration", ""))
+
+    update_payload = {"script_json": script_json, "version": existing["version"] + 1}
+    if is_hook:
+        update_payload["hook_preview_status"] = "generating"
+    else:
+        scene_previews = dict(existing.get("scene_preview_images") or {})
+        scene_previews[str(scene["seq"])] = {**scene_previews.get(str(scene["seq"]), {}), "status": "generating"}
+        update_payload["scene_preview_images"] = scene_previews
+    client.table("scripts").update(update_payload).eq("id", script_id).execute()
+
+    job_payload = {"script_id": script_id, "status": "queued", "kind": "hook_preview"}
+    if not is_hook:
+        job_payload["target_seq"] = scene["seq"]
+    client.table("render_jobs").insert(job_payload).execute()
+    return RedirectResponse(
+        f"/prompts?selected={product_id}&view=detail&toast=미리보기를+만들고+있어요",
+        status_code=302,
+    )
+
+
+@router.post("/prompts/{script_id}/confirm")
+def prompts_confirm(request: Request, script_id: str, product_id: str = Form(...)):
+    client = get_client()
+    script = client.table("scripts").select("*").eq("id", script_id).execute().data[0]
+    if script.get("hook_preview_status") != "done":
+        return RedirectResponse(
+            f"/prompts?selected={product_id}&view=detail&toast=먼저+후킹+미리보기를+완료해주세요",
+            status_code=302,
+        )
+    client.table("render_jobs").insert({"script_id": script_id, "status": "queued", "kind": "full"}).execute()
+    # 여기서 비로소 script_approved로 넘어가 미디어제작 탭에 노출된다 — 확인 전에
+    # 노출되면 확인/수정 과정에서 렌더 비용이 이중지출된다는 피드백으로 이 시점까지 미룬다.
     client.table("products").update({"status": "script_approved"}).eq("id", product_id).execute()
-    # 04_ui_spec.md: 다음 탭으로 강제 이동하지 않는다 — 토스트만 안내하고 현재(대본작성) 탭에 머문다.
-    return RedirectResponse("/scripts?toast=완료!+미디어제작+탭에서+확인할+수+있어요", status_code=302)
+    return RedirectResponse("/media?toast=완료!+미디어제작+탭에서+확인할+수+있어요", status_code=302)
 
 
 # --- 미디어제작 탭 ---
+
+
+# render_job.status는 worker.py의 실제 status_callback 값(queued/generating_images/
+# generating_video/generating_audio/assembling/done/failed) 그대로다 — 사람이 읽을 만한
+# 한글 라벨로 바꿔서 보여준다(사용자 피드백: 진행 상태를 더 명확히 보여달라).
+_RENDER_STATUS_LABELS = {
+    "queued": "대기 중",
+    "generating_images": "이미지 생성 중",
+    "generating_video": "후킹 영상 생성 중",
+    "generating_audio": "음성 생성 중",
+    "assembling": "영상 합성 중",
+    "done": "완료",
+    "failed": "실패",
+}
+
+
+def _render_elapsed_label(created_at: str | None) -> str | None:
+    """render_job.created_at부터 지금까지 경과 시간을 "N분 M초" 형태로 돌려준다.
+
+    started_at 컬럼이 따로 없어 created_at(큐에 들어간 시각)을 기준으로 삼는다 —
+    워커가 곧바로 집어가는 단일 워커 구조라 대기시간은 무시할 만하다. 렌더링이 오래
+    걸리는데(무무스가드 사례 약 14분) 진행 상태 텍스트만 보여서는 얼마나 걸리는지 알 수
+    없다는 피드백으로 추가했다.
+    """
+    if not created_at:
+        return None
+    try:
+        started = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    elapsed_sec = max(int((datetime.now(timezone.utc) - started).total_seconds()), 0)
+    minutes, seconds = divmod(elapsed_sec, 60)
+    return f"{minutes}분 {seconds}초"
 
 
 @router.get("/media", response_class=HTMLResponse)
@@ -674,6 +969,7 @@ def media_tab(request: Request, selected: str | None = None, view: str = "list")
     render_job = None
     thumbnail = None
     disclosure_ok = deeplink_ok = False
+    hook_patch_in_progress = False
     if selected:
         found = [p for p in products if p["id"] == selected]
         if found:
@@ -687,7 +983,18 @@ def media_tab(request: Request, selected: str | None = None, view: str = "list")
             scripts = client.table("scripts").select("*").eq("product_id", selected).order("created_at", desc=True).limit(1).execute().data
             script = scripts[0] if scripts else None
             if script:
-                jobs = client.table("render_jobs").select("*").eq("script_id", script["id"]).order("created_at", desc=True).limit(1).execute().data
+                # kind='full'만 본다 — 후킹 확인/재생성용 render_jobs(kind='hook_preview'/
+                # 'hook_patch')는 별도 추적용 행이라 이 탭에 노출되면 안 된다.
+                jobs = (
+                    client.table("render_jobs")
+                    .select("*")
+                    .eq("script_id", script["id"])
+                    .eq("kind", "full")
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute()
+                    .data
+                )
                 render_job = jobs[0] if jobs else None
                 youtube = (script.get("script_json") or {}).get("youtube") or {}
                 description = youtube.get("description", "") or ""
@@ -696,6 +1003,17 @@ def media_tab(request: Request, selected: str | None = None, view: str = "list")
                 if render_job:
                     thumbs = client.table("thumbnails").select("*").eq("render_job_id", render_job["id"]).order("created_at", desc=True).limit(1).execute().data
                     thumbnail = thumbs[0] if thumbs else None
+                    patch_jobs = (
+                        client.table("render_jobs")
+                        .select("status")
+                        .eq("source_render_job_id", render_job["id"])
+                        .order("created_at", desc=True)
+                        .limit(1)
+                        .execute()
+                        .data
+                    )
+                    hook_patch_in_progress = bool(patch_jobs) and patch_jobs[0]["status"] not in ("done", "failed")
+    render_in_progress = bool(render_job) and render_job["status"] not in ("done", "failed")
     ctx.update(
         {
             "active": "media",
@@ -703,6 +1021,9 @@ def media_tab(request: Request, selected: str | None = None, view: str = "list")
             "products": products,
             "selected": selected_product,
             "render_job": render_job,
+            "render_status_label": _RENDER_STATUS_LABELS.get(render_job["status"], render_job["status"]) if render_job else None,
+            "render_elapsed_label": _render_elapsed_label(render_job["created_at"]) if render_in_progress else None,
+            "hook_patch_in_progress": hook_patch_in_progress,
             "thumbnail": thumbnail,
             "disclosure_ok": disclosure_ok,
             "deeplink_ok": deeplink_ok,
@@ -712,6 +1033,48 @@ def media_tab(request: Request, selected: str | None = None, view: str = "list")
     return templates.TemplateResponse("tab_media.html", ctx)
 
 
+@router.post("/media/{render_job_id}/regenerate-hook")
+def media_regenerate_hook(
+    request: Request,
+    render_job_id: str,
+    product_id: str = Form(...),
+    target_seq: int | None = Form(None),
+    visual: str | None = Form(None),
+):
+    client = get_client()
+    job = client.table("render_jobs").select("*").eq("id", render_job_id).execute().data[0]
+    if job["kind"] != "full" or job["status"] != "done":
+        return RedirectResponse(
+            f"/media?selected={product_id}&view=detail&toast=완료된+렌더에서만+장면을+다시+만들+수+있어요",
+            status_code=302,
+        )
+    if visual is not None:
+        # 캡션 편집기에서 화면연출 텍스트를 고쳐서 재생성을 누른 경우 — 나레이션은 여기서
+        # 안 받는다(오디오·자막이 이미 확정돼 있어 바꾸면 타임라인이 깨진다, 계획 문서 참고).
+        script = client.table("scripts").select("*").eq("id", job["script_id"]).execute().data[0]
+        script_json = script["script_json"]
+        seq = target_seq if target_seq is not None else script_json["scenes"][0]["seq"]
+        for scene in script_json["scenes"]:
+            if scene["seq"] == seq:
+                scene["visual"] = visual
+                break
+        client.table("scripts").update(
+            {"script_json": script_json, "version": script["version"] + 1}
+        ).eq("id", job["script_id"]).execute()
+    job_payload = {
+        "script_id": job["script_id"],
+        "status": "queued",
+        "kind": "hook_patch",
+        "source_render_job_id": render_job_id,
+    }
+    if target_seq is not None:
+        job_payload["target_seq"] = target_seq
+    client.table("render_jobs").insert(job_payload).execute()
+    return RedirectResponse(
+        f"/media?selected={product_id}&view=detail&toast=장면을+다시+만들고+있어요", status_code=302
+    )
+
+
 @router.post("/media/{render_job_id}/generate-thumbnail")
 def media_generate_thumbnail(request: Request, render_job_id: str, product_id: str = Form(...)):
     client = get_client()
@@ -719,7 +1082,10 @@ def media_generate_thumbnail(request: Request, render_job_id: str, product_id: s
     script = client.table("scripts").select("*").eq("id", job["script_id"]).execute().data[0]
     product = client.table("products").select("*").eq("id", script["product_id"]).execute().data[0]
 
-    hook_text = script["script_json"]["structure"]["empathy"]
+    # "empathy"로 하드코딩돼 있었는데, 형식(tone)마다 첫 단계 키가 다를 수 있어(예:
+    # 기획천재발견형은 "hook", 썸쇼츠형은 "story_setup") 형식에서 실제 첫 단계 키를 조회한다.
+    fmt = get_format(script["script_json"].get("tone"))
+    hook_text = script["script_json"]["structure"][fmt.stage_keys[0]]
     work_dir = os.path.join("renders", render_job_id)
     # 후킹(첫 씬)에 실제 쓰인 스틸컷을 그대로 배경으로 써서, 썸네일 클릭 -> 영상 재생
     # 시작 화면이 시각적으로 이어지도록 한다 — 상품 원본 사진을 쓰면 썸네일과 실제
@@ -762,6 +1128,193 @@ def media_queue_upload(request: Request, render_job_id: str, product_id: str = F
     client.table("products").update({"status": "queued_for_upload"}).eq("id", product_id).execute()
     # 04_ui_spec.md: 다음 탭으로 강제 이동하지 않는다 — 토스트만 안내하고 현재(미디어제작) 탭에 머문다.
     return RedirectResponse("/media?toast=완료!+게시검토+탭에서+확인할+수+있어요", status_code=302)
+
+
+# 씬 화면상 자막/후킹/상시CTA 드래그 편집 박스의 초기 위치 — 실제 렌더 위치를 픽셀 단위로
+# 정확히 재현하진 않는다(줄바꿈 후 실제 텍스트 너비는 폰트 렌더링 전엔 알 수 없어서), 편집을
+# 시작할 만한 근사치일 뿐이다. 사용자가 드래그해서 원하는 위치로 옮기는 게 에디터의 핵심이라
+# 이 정도 근사로 충분하다고 판단했다.
+def _default_caption_position(element_type: str, is_last: bool) -> tuple[int, int]:
+    if element_type == "hook":
+        return int(WIDTH * 0.07), 260
+    if element_type == "sticky_cta":
+        return int(WIDTH * 0.15), HEIGHT - 190 - 40
+    # caption (마지막 씬은 CTA 스타일이라 더 위쪽에 작게 배치된다)
+    bottom_margin = 390 if is_last else 360
+    return int(WIDTH * 0.06), HEIGHT - bottom_margin - 120
+
+
+def _default_font_size(element_type: str, is_last: bool) -> int:
+    if element_type == "hook":
+        return HOOK_FONTSIZE
+    if element_type == "sticky_cta":
+        return STICKY_CTA_FONTSIZE
+    return CTA_CAPTION_FONTSIZE if is_last else CAPTION_FONTSIZE
+
+
+def _default_text_color(element_type: str) -> str:
+    if element_type == "hook":
+        return "#ffffff"
+    # caption/sticky_cta 기본 노란색(CAPTION_TEXT_COLOR="0xFFE600")과 동일한 값의
+    # HTML 색상 입력용(#rrggbb) 표기.
+    return "#ffe600"
+
+
+# 색상 입력값 검증용 — <input type="color">가 보내는 형태(#rrggbb)만 허용한다.
+HEX_COLOR_PATTERN = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+# 캡션 편집기에서 허용하는 폰트 크기 범위 — 예전엔 소/중/대/특대 4단계 프리셋이었는데,
+# 더 세밀하게 조절하고 싶다는 피드백으로 5px 단위 슬라이더로 바꿨다. 최소/최대는 그때의
+# "소"/"특대" 값을 그대로 물려받는다.
+FONT_SIZE_MIN = 32
+FONT_SIZE_MAX = 100
+FONT_SIZE_STEP = 5
+
+
+def _clamp_font_size(font_size: int) -> int:
+    return max(FONT_SIZE_MIN, min(FONT_SIZE_MAX, font_size))
+
+
+@router.get("/media/{render_job_id}/caption-editor", response_class=HTMLResponse)
+def media_caption_editor(request: Request, render_job_id: str, product_id: str):
+    client = get_client()
+    job = client.table("render_jobs").select("*").eq("id", render_job_id).execute().data[0]
+    script = client.table("scripts").select("*").eq("id", job["script_id"]).execute().data[0]
+    scenes = script["script_json"]["scenes"]
+    fmt = get_format(script["script_json"].get("tone"))
+    elements_by_seq = resolve_scene_text_elements(scenes, fmt.pre_reveal_stages)
+    overrides = job.get("caption_overrides") or {}
+
+    scene_cards = []
+    for scene in scenes:
+        seq = scene["seq"]
+        info = elements_by_seq.get(seq, {"texts": {}, "is_last": False})
+        seq_overrides = overrides.get(str(seq)) or {}
+        items = []
+        for element_type, default_text in info["texts"].items():
+            override = seq_overrides.get(element_type) or {}
+            default_x, default_y = _default_caption_position(element_type, info["is_last"])
+            font_size = override.get("font_size", _default_font_size(element_type, info["is_last"]))
+            items.append(
+                {
+                    "type": element_type,
+                    "text": override.get("text", default_text),
+                    "x": override.get("x", default_x),
+                    "y": override.get("y", default_y),
+                    "font": override.get("font", DEFAULT_FONT_KEY),
+                    "font_size": _clamp_font_size(font_size),
+                    "text_color": override.get("text_color", _default_text_color(element_type)),
+                    "bg_enabled": override.get("bg_enabled", element_type == "caption"),
+                    "bg_color": override.get("bg_color", "#000000"),
+                    "bg_opacity": override.get("bg_opacity", 0.55),
+                }
+            )
+        scene_cards.append(
+            {
+                "seq": seq,
+                "image_url": f"renders/{render_job_id}/scene_{seq}.jpg",
+                "elements": items,
+                "visual": scene.get("visual", ""),
+                "is_hook": seq == scenes[0]["seq"],
+            }
+        )
+
+    ctx = _base_ctx(request, client)
+    ctx.update(
+        {
+            "active": "media",
+            "render_job": job,
+            "product_id": product_id,
+            "scene_cards": scene_cards,
+            "font_labels": FONT_LABELS,
+            "font_size_min": FONT_SIZE_MIN,
+            "font_size_max": FONT_SIZE_MAX,
+            "font_size_step": FONT_SIZE_STEP,
+            "canvas_width": WIDTH,
+            "canvas_height": HEIGHT,
+        }
+    )
+    return templates.TemplateResponse("caption_editor.html", ctx)
+
+
+@router.post("/media/{render_job_id}/caption-editor/save")
+def media_caption_editor_save(
+    request: Request, render_job_id: str, product_id: str = Form(...), overrides_json: str = Form(...)
+):
+    try:
+        overrides = json.loads(overrides_json)
+    except json.JSONDecodeError:
+        return RedirectResponse(
+            f"/media/{render_job_id}/caption-editor?product_id={product_id}&toast=저장+실패%3A+잘못된+데이터",
+            status_code=302,
+        )
+
+    # 최소 검증 — 허용된 요소 타입만, font는 레지스트리에 있는 것만 통과시킨다.
+    if not isinstance(overrides, dict):
+        overrides = {}
+    for elements in overrides.values():
+        if not isinstance(elements, dict):
+            continue
+        for element_type in list(elements.keys()):
+            if element_type not in ("caption", "hook", "sticky_cta"):
+                del elements[element_type]
+                continue
+            values = elements[element_type]
+            if not isinstance(values, dict):
+                continue
+            if values.get("font") not in FONT_REGISTRY:
+                values.pop("font", None)
+            try:
+                font_size = int(values.get("font_size"))
+            except (TypeError, ValueError):
+                values.pop("font_size", None)
+            else:
+                if FONT_SIZE_MIN <= font_size <= FONT_SIZE_MAX:
+                    values["font_size"] = font_size
+                else:
+                    values.pop("font_size", None)
+            if "text_color" in values and not HEX_COLOR_PATTERN.match(str(values.get("text_color"))):
+                values.pop("text_color", None)
+
+    client = get_client()
+    job = client.table("render_jobs").select("*").eq("id", render_job_id).execute().data[0]
+    script = client.table("scripts").select("*").eq("id", job["script_id"]).execute().data[0]
+    work_dir = os.path.join("renders", render_job_id)
+
+    if not job.get("base_video_path"):
+        return RedirectResponse(
+            f"/media?selected={product_id}&view=detail&toast=이+영상은+구버전+렌더라+캡션+편집을+지원하지+않아요",
+            status_code=302,
+        )
+
+    try:
+        # 재편집은 이 한 패스(오디오는 복사, 텍스트만 다시 그림)만 다시 돌리면 된다 —
+        # Gemini/Veo/TTS를 다시 부를 필요가 없다.
+        fmt = get_format(script["script_json"].get("tone"))
+        final_path = recomposite_captions(
+            job["base_video_path"],
+            job["scene_timeline"],
+            script["script_json"]["scenes"],
+            script["script_json"]["disclosure"],
+            resolve_font_path(),
+            work_dir,
+            os.path.join(work_dir, "final.mp4"),
+            overrides=overrides,
+            pre_reveal_stages=fmt.pre_reveal_stages,
+        )
+    except RenderError:
+        return RedirectResponse(
+            f"/media/{render_job_id}/caption-editor?product_id={product_id}&toast=재생성+실패%2C+다시+시도해주세요",
+            status_code=302,
+        )
+
+    client.table("render_jobs").update({"caption_overrides": overrides, "output_path": final_path}).eq(
+        "id", render_job_id
+    ).execute()
+    return RedirectResponse(
+        f"/media/{render_job_id}/caption-editor?product_id={product_id}&toast=저장했어요", status_code=302
+    )
 
 
 # --- 게시검토 탭 ---

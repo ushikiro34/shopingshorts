@@ -18,6 +18,9 @@
 from __future__ import annotations
 
 import base64
+import os
+import subprocess
+import tempfile
 import time
 
 import httpx
@@ -87,6 +90,48 @@ def generate_scene_video(
     raise VideoGenerationError(f"Veo 영상 생성 실패(재시도 포함): {last_error}") from last_error
 
 
+def _validate_video_bytes(video_bytes: bytes) -> None:
+    """다운로드한 영상이 재생 가능한 정상 파일인지 최소한으로 확인한다.
+
+    Veo가 이따금 형태 붕괴·왜곡이 심한 영상을 만들어내는 문제(사용자 피드백: 특히 같은
+    상품을 재렌더할 때 후킹 영상이 이상하게 나오는 경우가 있었다)는 "영상 자체는 정상
+    재생되는데 내용이 이상하다"는 뜻이라 이 검증으로는 못 잡는다 — 그건 프롬프트의 동작
+    폭 제한으로 완화하는 영역이다(모듈 docstring 참고). 여기서는 그보다 명백한 실패,
+    즉 다운로드가 깨졌거나(용량이 비정상적으로 작음) 컨테이너 자체가 손상돼 재생이 안
+    되는 경우만 걸러 VideoGenerationError로 처리한다 — 그러면 generate_scene_video()의
+    재시도 1회가 다시 시도할 기회를 얻고, 그마저 실패하면 worker.py가 기존 정지이미지 +
+    Ken Burns 방식으로 안전하게 폴백한다(이미 있는 동작, 여기서 새로 만드는 건 아니다).
+    """
+    if len(video_bytes) < 1024:
+        raise VideoGenerationError(f"다운로드된 영상 용량이 비정상적으로 작습니다({len(video_bytes)} bytes).")
+
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        tmp.write(video_bytes)
+        tmp_path = tmp.name
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe", "-v", "error", "-select_streams", "v:0",
+                "-show_entries", "stream=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                tmp_path,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        duration_str = result.stdout.strip()
+        if result.returncode != 0 or not duration_str:
+            raise VideoGenerationError(f"영상 파일 검증 실패(ffprobe): {result.stderr[:300]}")
+        try:
+            duration = float(duration_str)
+        except ValueError as exc:
+            raise VideoGenerationError(f"영상 길이를 읽을 수 없습니다: {duration_str!r}") from exc
+        if duration <= 0:
+            raise VideoGenerationError(f"영상 길이가 0 이하입니다({duration}초).")
+    finally:
+        os.unlink(tmp_path)
+
+
 def _generate_scene_video_once(
     active_client: httpx.Client,
     image_bytes: bytes,
@@ -130,6 +175,7 @@ def _generate_scene_video_once(
             download_res = active_client.get(video_uri, params={"key": GEMINI_API_KEY}, follow_redirects=True)
             if download_res.status_code >= 400:
                 raise VideoGenerationError(f"영상 다운로드 실패 (status={download_res.status_code})")
+            _validate_video_bytes(download_res.content)
             return download_res.content
 
     raise VideoGenerationError(f"Veo 작업이 {MAX_POLL_ATTEMPTS * POLL_INTERVAL_SEC}초 안에 끝나지 않았습니다.")

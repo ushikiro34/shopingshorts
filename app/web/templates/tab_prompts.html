@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% from "_macros.html" import list_row %}
+{% block title %}프롬프트 확인 · couparvi{% endblock %}
+{% block content %}
+<div class="three-col" data-view="{{ view }}">
+  <div class="panel list-panel">
+    {% if products %}
+    {% for p in products %}
+    {% call list_row(
+    href="/prompts?selected=" ~ p.id ~ "&view=detail",
+    selected=(selected and selected.id == p.id),
+    delete_action="/products/" ~ p.id ~ "/delete",
+    redirect_to="prompts"
+    ) %}
+    <span class="list-item-title">{{ p.product_name or "(이름 미입력)" }}</span>
+    {% endcall %}
+    {% endfor %}
+    {% else %}
+    <div class="empty-banner">아직 확인할 프롬프트가 없어요.<br><a class="btn btn-ghost" href="/scripts"
+        style="margin-top:8px;">대본작성으로</a></div>
+    {% endif %}
+  </div>
+
+  <div class="panel center-panel">
+    <a class="back-to-list" href="/prompts">← 목록</a>
+    {% if not selected %}
+    <div class="empty-banner">왼쪽 목록에서 상품을 선택해주세요.</div>
+    {% elif not script %}
+    <h2 style="margin-top:0;">{{ selected.product_name }}</h2>
+    <p style="color:var(--text-dim);">이 상품의 대본을 찾을 수 없어요.</p>
+    {% else %}
+    <h2 style="margin-top:0;">{{ selected.product_name }} — 장면 확인</h2>
+    <p style="color:var(--text-dim);">전체 컨셉과 씬별 화면 연출·나레이션을 확인/수정하고, 스틸컷(후킹은 영상까지)을
+      미리 만들어볼 수 있어요. 후킹부터 먼저 만들어야 다른 씬을 미리 만들 수 있어요(인물이 씬마다 다르게
+      나오지 않도록 항상 후킹 이미지를 기준으로 삼기 때문). 확정하면 지금까지 만든 미리보기 그대로 전체
+      렌더가 시작되고 미디어제작 탭에 나타나요 — 미리보기를 안 만든 씬은 렌더 시점에 평소처럼 새로 생성돼요.</p>
+
+    <div class="panel" style="margin-bottom:18px;">
+      <h3 style="margin-top:0;">전체 컨셉</h3>
+      <form method="post" action="/scripts/{{ script.id }}/edit">
+        <input type="hidden" name="product_id" value="{{ selected.id }}">
+        {% for stage in format.stages %}
+        <div class="card-field">
+          <label>{{ stage.label }}</label>
+          <textarea name="stage__{{ stage.key }}" class="script-cell" rows="3">{{ script.script_json.structure.get(stage.key, "") }}</textarea>
+        </div>
+        {% endfor %}
+        <button class="btn btn-ghost" type="submit">전체 컨셉 저장</button>
+      </form>
+    </div>
+
+    {% set any_in_progress = scene_cards | selectattr('in_progress') | list | length > 0 %}
+    {% if any_in_progress %}
+    <script>
+      setTimeout(function () { location.reload(); }, 5000);
+    </script>
+    {% endif %}
+
+    {% for card in scene_cards %}
+    <div class="panel" style="margin-bottom:18px;{% if card.is_hook %} border-color:var(--accent);{% endif %}">
+      <h3 style="margin-top:0;">씬 {{ card.seq }}{% if card.is_hook %} · 후킹(첫 장면){% endif %}</h3>
+
+      <form method="post" action="/prompts/{{ script.id }}/generate">
+        <input type="hidden" name="product_id" value="{{ selected.id }}">
+        <input type="hidden" name="target_seq" value="{{ card.seq }}">
+        <div class="card-field">
+          <label>화면 연출 (visual)</label>
+          <textarea name="visual" class="script-cell" rows="2" {% if card.locked %}disabled{% endif %}>{{ card.visual }}</textarea>
+        </div>
+        <div class="card-field">
+          <label>나레이션</label>
+          <textarea name="narration" class="script-cell" rows="2" {% if card.locked %}disabled{% endif %}>{{ card.narration }}</textarea>
+        </div>
+        {% if card.is_pre_reveal %}
+        <p style="color:var(--text-dim);font-size:0.85em;">이 장면은 상품이 아직 등장하면 안 되는 단계라 참고 이미지 없이 만들어져요 —
+          화면 연출에 상품 등장을 적어도 실제로는 안 나와요.</p>
+        {% endif %}
+        <button class="btn btn-ghost" type="submit"
+          {% if card.locked or card.in_progress %}disabled title="{% if card.locked %}먼저 후킹 미리보기를 완료해주세요{% else %}이미 만드는 중이에요{% endif %}"{% endif %}>
+          {% if card.status %}다시 만들기{% else %}미리보기 만들기{% endif %}
+        </button>
+      </form>
+
+      {% if card.in_progress %}
+      <p style="color:var(--text-dim);margin-top:14px;">🔄 만들고 있어요{% if card.is_hook %} — 영상까지 만드느라 몇 분 걸릴 수 있어요{% endif %}.</p>
+      {% elif card.status == 'failed' %}
+      <div class="empty-banner" style="margin-top:14px;">생성에 실패했어요{% if card.error %}: {{ card.error[:200] }}{% endif %}. 다시 시도해주세요.</div>
+      {% elif card.status == 'done' %}
+      <div style="margin-top:14px;">
+        {% if card.is_hook and card.video_path %}
+        <video controls src="/{{ card.video_path.replace('\\', '/') }}" style="max-width:280px;"></video>
+        {% elif card.image_path %}
+        <img src="/{{ card.image_path.replace('\\', '/') }}" style="max-width:280px;">
+        {% endif %}
+      </div>
+      {% elif card.locked %}
+      <p style="color:var(--text-dim);margin-top:14px;">먼저 후킹 미리보기를 완료해주세요.</p>
+      {% else %}
+      <p style="color:var(--text-dim);margin-top:14px;">아직 미리보기가 없어요.</p>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% endif %}
+  </div>
+
+  <div class="panel action-panel">
+    {% if selected %}
+    <div class="prev-stage-section">
+      <a class="prev-stage-link" href="/scripts?selected={{ selected.id }}&view=detail">← 대본작성으로</a>
+    </div>
+    {% if script %}
+    {% if hook_preview_status == 'done' %}
+    <form method="post" action="/prompts/{{ script.id }}/confirm">
+      <input type="hidden" name="product_id" value="{{ selected.id }}">
+      <button class="btn btn-primary" type="submit">이 상태로 확정하고 렌더 시작</button>
+    </form>
+    {% else %}
+    <p style="color:var(--text-dim);">후킹 미리보기를 완료하면 확정하고 렌더를 시작할 수 있어요.</p>
+    {% endif %}
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

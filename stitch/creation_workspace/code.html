@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+
+<html class="h-full" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ShortsMaker Studio - Workspace</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&amp;family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "primary-container": "#cc7e6b",
+                    "on-secondary-container": "#696159",
+                    "secondary-fixed-dim": "#d0c5bb",
+                    "on-primary-fixed-variant": "#723526",
+                    "on-secondary-fixed-variant": "#4d463e",
+                    "primary-fixed-dim": "#ffb4a2",
+                    "on-tertiary-fixed-variant": "#474747",
+                    "secondary-container": "#e9ded4",
+                    "outline": "#86736e",
+                    "inverse-on-surface": "#f2f0ee",
+                    "tertiary-container": "#939292",
+                    "on-tertiary": "#ffffff",
+                    "inverse-primary": "#ffb4a2",
+                    "inverse-surface": "#30302f",
+                    "outline-variant": "#d9c1bc",
+                    "on-surface": "#1b1c1b",
+                    "surface-container-lowest": "#ffffff",
+                    "error": "#ba1a1a",
+                    "on-background": "#1b1c1b",
+                    "surface-bright": "#fbf9f7",
+                    "primary-fixed": "#ffdad2",
+                    "on-error": "#ffffff",
+                    "on-primary-container": "#4e1a0e",
+                    "secondary": "#655d55",
+                    "tertiary": "#5f5e5e",
+                    "surface-container": "#efedec",
+                    "on-secondary-fixed": "#201b15",
+                    "on-secondary": "#ffffff",
+                    "background": "#fbf9f7",
+                    "surface-variant": "#e4e2e0",
+                    "on-tertiary-container": "#2b2b2b",
+                    "on-surface-variant": "#53433f",
+                    "surface-container-highest": "#e4e2e0",
+                    "secondary-fixed": "#ece0d7",
+                    "surface": "#fbf9f7",
+                    "on-primary-fixed": "#3a0b02",
+                    "on-error-container": "#93000a",
+                    "tertiary-fixed-dim": "#c8c6c6",
+                    "on-tertiary-fixed": "#1b1c1c",
+                    "surface-dim": "#dbdad8",
+                    "surface-container-low": "#f5f3f1",
+                    "primary": "#8e4c3b",
+                    "surface-tint": "#8e4c3b",
+                    "error-container": "#ffdad6",
+                    "tertiary-fixed": "#e4e2e1",
+                    "surface-container-high": "#eae8e6",
+                    "on-primary": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "margin-mobile": "20px",
+                    "gutter": "24px",
+                    "unit": "4px",
+                    "container-max": "1280px",
+                    "margin-desktop": "48px"
+            },
+            "fontFamily": {
+                    "body-md": ["Hanken Grotesk"],
+                    "headline-lg": ["Newsreader"],
+                    "body-lg": ["Hanken Grotesk"],
+                    "display-lg": ["Newsreader"],
+                    "headline-md": ["Newsreader"],
+                    "label-sm": ["Hanken Grotesk"],
+                    "headline-lg-mobile": ["Newsreader"],
+                    "label-md": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "fontWeight": "500"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "600"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "500"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                    "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "500"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600"}]
+            }
+          }
+        }
+      }
+    </script>
+<style>
+        body {
+            background-color: #F7EBE1; /* Warm Linen */
+        }
+        .soft-lift {
+            box-shadow: 0 10px 25px -5px rgba(142, 76, 59, 0.08), 0 8px 10px -6px rgba(142, 76, 59, 0.04);
+        }
+        .inner-pressed {
+            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="text-on-surface font-body-md h-full flex overflow-hidden">
+<!-- SideNavBar -->
+<nav class="bg-surface-container-low border-r border-outline-variant shadow-sm h-screen w-64 fixed left-0 top-0 flex flex-col py-8 px-4 z-20">
+<div class="mb-8 px-4">
+<h1 class="font-headline-md text-headline-md text-primary font-bold">Boutique Studio</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider mt-1">Premium Plan</p>
+</div>
+<button class="mb-8 w-full bg-primary text-on-primary py-3 px-4 rounded-xl font-label-md text-label-md inner-pressed hover:bg-on-primary-container transition-colors flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-[20px]">add</span>
+            Create New Short
+        </button>
+<ul class="space-y-2 flex-grow">
+<li>
+<a class="flex items-center gap-3 bg-primary-container text-on-primary-container rounded-xl px-4 py-3 font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined" data-weight="fill" style="font-variation-settings: 'FILL' 1;">video_library</span>
+                    Projects
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 text-on-surface-variant hover:bg-secondary-container rounded-xl px-4 py-3 transition-all duration-300 scale-95 active:scale-90 font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">auto_awesome</span>
+                    Templates
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 text-on-surface-variant hover:bg-secondary-container rounded-xl px-4 py-3 transition-all duration-300 scale-95 active:scale-90 font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">inventory_2</span>
+                    Assets
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 text-on-surface-variant hover:bg-secondary-container rounded-xl px-4 py-3 transition-all duration-300 scale-95 active:scale-90 font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">insights</span>
+                    Analytics
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 text-on-surface-variant hover:bg-secondary-container rounded-xl px-4 py-3 transition-all duration-300 scale-95 active:scale-90 font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">folder_special</span>
+                    Library
+                </a>
+</li>
+</ul>
+<div class="mt-auto pt-4 border-t border-outline-variant space-y-2">
+<a class="flex items-center gap-3 text-on-surface-variant hover:bg-secondary-container rounded-xl px-4 py-3 transition-all duration-300 font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">help_outline</span>
+                Support
+            </a>
+<a class="flex items-center gap-3 text-on-surface-variant hover:bg-secondary-container rounded-xl px-4 py-3 transition-all duration-300 font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined">settings</span>
+                Settings
+            </a>
+</div>
+</nav>
+<!-- Main Workspace -->
+<main class="ml-64 flex-1 flex flex-col h-screen overflow-hidden bg-background">
+<!-- Top Toolbar -->
+<header class="h-16 border-b border-outline-variant flex items-center justify-between px-8 bg-surface shrink-0">
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<h2 class="font-headline-md text-headline-md text-on-surface">Summer Collection Promo</h2>
+<span class="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full font-label-sm text-label-sm">Auto-saved</span>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">undo</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined">redo</span>
+</button>
+<button class="bg-primary text-on-primary px-6 py-2 rounded-xl font-label-md text-label-md hover:bg-on-primary-container transition-colors inner-pressed ml-4">
+                    Export
+                </button>
+</div>
+</header>
+<!-- Editing Area -->
+<div class="flex-1 flex overflow-hidden">
+<!-- Center Canvas (Video Preview) -->
+<div class="flex-1 flex flex-col items-center justify-center p-8 overflow-y-auto">
+<div class="relative bg-black rounded-2xl overflow-hidden soft-lift flex shrink-0" style="width: 360px; height: 640px;">
+<img class="w-full h-full object-cover opacity-90" data-alt="A high-quality vertical video frame showing a woman in her 30s wearing a chic summer dress, walking through a sunlit botanical garden. The aesthetic is modern editorial, with soft natural lighting and warm earthy tones. The image feels premium, high-end, and perfectly suited for a lifestyle brand's social media campaign." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBE9IU3UO2J0upZWEf5NP1bgb25j5GPfoXQUskXNef9gMf5KyAH5Bvj9QrnFBsuomgVxc86q5TCYQK-S8U5Gcqg3_C2BfMwDba78l1orb9kG-JR8Z7uzFxqHdnj8OlM7YGU2PVS5rev2ClQDZKT1fCYFgW_x2TCbLiRRZXYI2Y9Maic3VBjjXgrITJ6UIzJ8dJQKUJbthV_JRLSBCedCg8-zDQDf4elih62Q1N787j63LcopPcxPmbs"/>
+<!-- Overlay Elements -->
+<div class="absolute bottom-12 left-4 right-4 flex flex-col gap-2">
+<div class="bg-white/80 backdrop-blur-sm p-3 rounded-xl soft-lift flex items-center gap-3">
+<img class="w-12 h-12 rounded-lg object-cover" data-alt="A small square product thumbnail showing a close-up of a woven rattan handbag. The lighting is bright and clean, emphasizing the texture of the material. Minimalist background." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC9rslSD5lYk-6yJMtK6pdnQVK9rMA_sOh8vv6CkAa5Q7W4pnfnU4Czc502n4ZEuUncYjXWYuqueqweu9hiwTnXgwwi2KOyQPfVsqhDD_Rsc-7S8V1bKyL_f3mowQ8AMk5_UP8dqP2Ql0RYbQx_lwIU8HI89pEUysCjH1ub0Nheo8jCYdRvhUQqqxCjd0wW5W71rUGvHSlpRgPvcCofzHAhk17cBFg67Mrm1L-LaL6FA2T7MlA1hPDc"/>
+<div class="flex-1">
+<p class="font-label-md text-label-md text-on-surface">Rattan Summer Tote</p>
+<p class="font-label-sm text-label-sm text-primary">$128.00</p>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-[20px]">shopping_bag</span>
+</div>
+</div>
+<!-- Playback Controls overlay -->
+<div class="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity bg-black/20">
+<button class="bg-white/90 backdrop-blur-md p-4 rounded-full text-primary hover:scale-105 transition-transform soft-lift">
+<span class="material-symbols-outlined text-[32px]" data-weight="fill" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Right Sidebar (Tools) -->
+<aside class="w-80 bg-surface-bright border-l border-outline-variant flex flex-col overflow-y-auto shrink-0 z-10">
+<!-- Style Presets Section -->
+<div class="p-6 border-b border-outline-variant">
+<h3 class="font-headline-md text-[20px] text-on-surface mb-4">Style &amp; Mood</h3>
+<div class="grid grid-cols-2 gap-3">
+<button class="border-2 border-primary bg-surface p-4 rounded-xl text-left flex flex-col gap-2 soft-lift">
+<span class="material-symbols-outlined text-primary">auto_awesome</span>
+<span class="font-label-md text-label-md text-on-surface">Editorial</span>
+</button>
+<button class="border border-outline-variant bg-surface hover:border-primary-container p-4 rounded-xl text-left flex flex-col gap-2 transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant">checkroom</span>
+<span class="font-label-md text-label-md text-on-surface-variant">Classic</span>
+</button>
+<button class="border border-outline-variant bg-surface hover:border-primary-container p-4 rounded-xl text-left flex flex-col gap-2 transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant">web_stories</span>
+<span class="font-label-md text-label-md text-on-surface-variant">Modern</span>
+</button>
+<button class="border border-outline-variant bg-surface hover:border-primary-container p-4 rounded-xl text-left flex flex-col gap-2 transition-colors">
+<span class="material-symbols-outlined text-on-surface-variant">tune</span>
+<span class="font-label-md text-label-md text-on-surface-variant">Custom</span>
+</button>
+</div>
+</div>
+<!-- AI Shopping Tags Section -->
+<div class="p-6 flex-1">
+<div class="flex items-center justify-between mb-4">
+<h3 class="font-headline-md text-[20px] text-on-surface">Products Mentioned</h3>
+<button class="text-primary hover:text-on-primary-container transition-colors">
+<span class="material-symbols-outlined text-[20px]">add_circle</span>
+</button>
+</div>
+<div class="bg-secondary-container/50 rounded-xl p-4 mb-4 text-center border border-dashed border-outline-variant">
+<span class="material-symbols-outlined text-primary mb-2">magic_button</span>
+<p class="font-body-md text-[14px] text-on-surface-variant">AI detected 2 products in this scene.</p>
+</div>
+<div class="space-y-3">
+<!-- Product Card 1 -->
+<div class="bg-surface p-3 rounded-xl border border-outline-variant flex gap-3 group hover:border-primary-container transition-colors cursor-pointer soft-lift">
+<img class="w-16 h-16 rounded-lg object-cover" data-alt="Small thumbnail image of a stylish rattan handbag on a clean off-white background. The lighting is soft and natural, emphasizing the texture." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCSpoF6oG5rshyTrXq9N2Rb28_vLTouTy5rTcIAJ98Ylg5dNp-kvQGgB9D6MnEWYNf9T87Tqzyra9h9ONoVHAxdqnyPhno2550jE8kAa79YVipKOOMCMmMPNEr18ST2-eQpdA5bo-H2_T8AtHIo3VaS5cbbRnRJt0n5lGTRxoyZkSwP3yD7RIDEELHsvsMXcy9j-HrcJRQSqG-NEiCD-Ea92u2F5XRxehlWXfk5B37WUTNwREvQNUFc"/>
+<div class="flex-1 flex flex-col justify-center">
+<p class="font-label-md text-label-md text-on-surface line-clamp-1">Rattan Summer Tote</p>
+<div class="flex gap-1 mt-1">
+<span class="bg-[#ffb4a2]/30 text-on-surface-variant px-2 py-0.5 rounded-full font-label-sm text-[10px]">Accessory</span>
+<span class="bg-secondary-container text-on-surface-variant px-2 py-0.5 rounded-full font-label-sm text-[10px]">0:05 - 0:12</span>
+</div>
+</div>
+<button class="text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity self-center">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+<!-- Product Card 2 -->
+<div class="bg-surface p-3 rounded-xl border border-outline-variant flex gap-3 group hover:border-primary-container transition-colors cursor-pointer">
+<img class="w-16 h-16 rounded-lg object-cover" data-alt="Small thumbnail image of a beige linen summer dress folded neatly on a warm wooden surface. Minimalist and elegant composition." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDHBzYzJs2O2mQCVVVsnQQ_469coo13kPXUNaVpWDFNtS3ibfxut-LJARZ5VJ5R3iGURppEisJmPQlWQfhdaTw3hBBFud-xGZ-ZNVB3sq-_wvH28FY2s62nuRsSku8QR0fuesI8nkULF3Rr80oGM2QrjDl0is_58CZ_T3ZU_YpFjrUxt0wNncA5fnPWrvL0CUa1wxd48Sbh_9jihQwnHEDlShcYoh-e08ajNbqL9NqZOyvEqJXAncHG"/>
+<div class="flex-1 flex flex-col justify-center">
+<p class="font-label-md text-label-md text-on-surface line-clamp-1">Linen Midi Dress</p>
+<div class="flex gap-1 mt-1">
+<span class="bg-[#ffb4a2]/30 text-on-surface-variant px-2 py-0.5 rounded-full font-label-sm text-[10px]">Apparel</span>
+<span class="bg-secondary-container text-on-surface-variant px-2 py-0.5 rounded-full font-label-sm text-[10px]">0:00 - 0:15</span>
+</div>
+</div>
+<button class="text-on-surface-variant opacity-0 group-hover:opacity-100 transition-opacity self-center">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+</div>
+</div>
+</aside>
+</div>
+<!-- Visual Timeline (Bottom) -->
+<div class="h-48 bg-surface-bright border-t border-outline-variant shrink-0 flex flex-col z-10">
+<div class="flex items-center justify-between px-6 py-2 border-b border-outline-variant bg-surface">
+<div class="flex items-center gap-4">
+<button class="text-on-surface-variant hover:text-primary"><span class="material-symbols-outlined text-[20px]">content_cut</span></button>
+<button class="text-on-surface-variant hover:text-primary"><span class="material-symbols-outlined text-[20px]">transition_fade</span></button>
+<div class="w-px h-4 bg-outline-variant"></div>
+<span class="font-body-md text-[14px] text-on-surface-variant">00:05 / 00:15</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-on-surface-variant text-[16px]">zoom_out</span>
+<div class="w-32 h-1.5 bg-secondary-container rounded-full overflow-hidden">
+<div class="w-1/2 h-full bg-outline"></div>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant text-[16px]">zoom_in</span>
+</div>
+</div>
+<!-- Timeline Tracks -->
+<div class="flex-1 p-6 overflow-x-auto relative flex flex-col gap-3">
+<!-- Playhead -->
+<div class="absolute top-0 bottom-0 left-[30%] w-0.5 bg-primary z-20">
+<div class="w-3 h-3 bg-primary rounded-full absolute -top-1.5 -left-[5px]"></div>
+</div>
+<!-- Video Track -->
+<div class="flex gap-1 h-20 items-center">
+<div class="w-12 text-right pr-4 font-label-sm text-label-sm text-on-surface-variant shrink-0">Video</div>
+<div class="flex-1 flex gap-1 h-full bg-secondary-container/30 rounded-lg p-1">
+<!-- Scene 1 -->
+<div class="w-1/3 bg-surface border border-outline-variant rounded-md overflow-hidden relative group">
+<img class="w-full h-full object-cover opacity-80" data-alt="Thumbnail of a video scene showing a woman twirling in a linen dress outdoors. Warm lighting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBMvZA0jK0PkXZRKHZYIscTeOdQeLtSvbWCjAzrJqMA2nIBRVYs65-nuaA7CDANA7PoWs4Y0Y5YC_0j84lbIGyI-Hb_jZ_9Ykso8nDtFbut-OdZXLo1BfxDWtke-2oyfpuR6mMHNVq4bv60PPvg7fxjQ-RDDSHGThut0XFHe8vQdC9d-Opkf8uhrc4hzQDxKAC4juFBotgGPochYjyJ1-2hn7XETGoVy6SPWIYoUTYBvoos8HGHFspm"/>
+<div class="absolute inset-0 border-2 border-transparent group-hover:border-primary-container rounded-md transition-colors"></div>
+</div>
+<!-- Transition Indicator -->
+<div class="w-6 shrink-0 flex items-center justify-center bg-surface-variant rounded-md z-10 -mx-3">
+<span class="material-symbols-outlined text-[14px] text-on-surface-variant">animation</span>
+</div>
+<!-- Scene 2 -->
+<div class="w-2/3 bg-surface border-2 border-primary rounded-md overflow-hidden relative">
+<img class="w-full h-full object-cover opacity-80" data-alt="Thumbnail of a video scene showing a close up of a woman holding a rattan bag. Sunlight reflecting off the bag." src="https://lh3.googleusercontent.com/aida-public/AB6AXuChcqMK6PQKmlGdX9Z7smCHM-zE4jDOi_MElsJPZ00zNALAmE_D83igOBEn90eFdo3YqNyO6CyAMCIUYwrjb-2c_f1mPs0icnGeP_pg8gNNt8e3KRZAQUbxnTemmhVgHd4gusZFlggnCnwoHiqyJcTycgrkTS6nytUwpKRyTcLIhGE9PqVpH1VMODUJGfEXQkJMdC4LRY5Qaq6X18PuEF28p_urKm-BF0SnKJScrVDB9w9fqd9X2aWu"/>
+</div>
+</div>
+</div>
+<!-- Tags Track -->
+<div class="flex gap-1 h-8 items-center mt-2">
+<div class="w-12 text-right pr-4 font-label-sm text-label-sm text-on-surface-variant shrink-0">Tags</div>
+<div class="flex-1 relative h-full bg-secondary-container/10 rounded-lg">
+<div class="absolute left-0 w-full h-full top-0 flex items-center px-1">
+<!-- Tag duration bar -->
+<div class="absolute left-[35%] w-[40%] h-5 bg-[#ffb4a2]/40 rounded-full border border-primary-container flex items-center px-2 cursor-pointer hover:bg-[#ffb4a2]/60 transition-colors">
+<span class="material-symbols-outlined text-[12px] text-on-primary-container mr-1">shopping_bag</span>
+<span class="font-label-sm text-[10px] text-on-primary-container truncate">Rattan Tote</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import re
 
-from app.config import EDUCATION_FORBIDDEN_KEYWORDS, PARTNERS_DISCLOSURE, SCRIPT_TONES
+from app.config import EDUCATION_FORBIDDEN_KEYWORDS, PARTNERS_DISCLOSURE
+from app.script.formats import all_known_tones, get_format
 
-STRUCTURE_FIELDS = ["empathy", "emotion", "problem", "solution", "result", "product"]
 MIN_SCENES = 3
 MAX_SCENES = 8
 MIN_DURATION_SEC = 30
@@ -55,7 +55,8 @@ def has_verbatim_overlap(
 def validate_structure(script_json: dict) -> list[str]:
     errors = []
     structure = script_json.get("structure") or {}
-    for field in STRUCTURE_FIELDS:
+    fmt = get_format(script_json.get("tone"))
+    for field in fmt.stage_keys:
         if not structure.get(field):
             errors.append(f"structure.{field}가 비어있습니다.")
     return errors
@@ -63,8 +64,9 @@ def validate_structure(script_json: dict) -> list[str]:
 
 def validate_tone(script_json: dict) -> list[str]:
     tone = script_json.get("tone")
-    if tone not in SCRIPT_TONES:
-        return [f"tone '{tone}'이 정의된 7종({SCRIPT_TONES})에 포함되지 않습니다."]
+    known_tones = all_known_tones()
+    if tone not in known_tones:
+        return [f"tone '{tone}'이 정의된 형식({known_tones})에 포함되지 않습니다."]
     return []
 
 
@@ -86,13 +88,14 @@ def validate_scenes(script_json: dict) -> list[str]:
             f"estimated_duration_sec({duration})이 {MIN_DURATION_SEC}~{MAX_DURATION_SEC}초 범위를 벗어났습니다."
         )
 
-    # 대본작성 탭에서 각 구조 카드마다 해당 자막을 같이 보여주려면 stage가 STRUCTURE_FIELDS
-    # 중 하나로 정확히 채워져 있어야 한다 — 비어있거나 오타면 그 씬의 자막이 어느 카드에도
-    # 안 붙어 조용히 누락된다.
+    # 대본작성 탭에서 각 구조 카드마다 해당 자막을 같이 보여주려면 stage가 이 대본의 형식이
+    # 정의한 stage 목록 중 하나로 정확히 채워져 있어야 한다 — 비어있거나 오타면 그 씬의
+    # 자막이 어느 카드에도 안 붙어 조용히 누락된다.
+    fmt = get_format(script_json.get("tone"))
     for scene in scenes:
         stage = scene.get("stage")
-        if stage not in STRUCTURE_FIELDS:
-            errors.append(f"scene {scene.get('seq', '?')}의 stage('{stage}')가 {STRUCTURE_FIELDS} 중 하나가 아닙니다.")
+        if stage not in fmt.stage_keys:
+            errors.append(f"scene {scene.get('seq', '?')}의 stage('{stage}')가 {fmt.stage_keys} 중 하나가 아닙니다.")
     return errors
 
 
@@ -110,7 +113,8 @@ def validate_no_verbatim_leak(script_json: dict, reviews_raw: str) -> list[str]:
 
 def _narration_texts(script_json: dict) -> list[str]:
     structure = script_json.get("structure") or {}
-    texts = [structure.get(field, "") or "" for field in STRUCTURE_FIELDS]
+    fmt = get_format(script_json.get("tone"))
+    texts = [structure.get(field, "") or "" for field in fmt.stage_keys]
     texts += [scene.get("narration", "") or "" for scene in script_json.get("scenes") or []]
     return texts
 
@@ -131,12 +135,13 @@ def validate_no_price_mention(script_json: dict) -> list[str]:
 
 
 def validate_cta_redirects_to_description(script_json: dict) -> list[str]:
-    """product narration이 '본문/더보기/설명란' 등으로 링크 확인을 유도해야 한다 (v2.2)."""
+    """CTA 단계 narration이 '본문/더보기/설명란' 등으로 링크 확인을 유도해야 한다 (v2.2)."""
     structure = script_json.get("structure") or {}
-    combined = structure.get("product", "") or ""
+    fmt = get_format(script_json.get("tone"))
+    combined = structure.get(fmt.cta_stage, "") or ""
     if not any(hint in combined for hint in CTA_REDIRECT_HINTS):
         return [
-            "structure.product에 '본문/더보기/설명란' 등 링크 확인을 유도하는 CTA 문구가 없습니다."
+            f"structure.{fmt.cta_stage}에 '본문/더보기/설명란' 등 링크 확인을 유도하는 CTA 문구가 없습니다."
         ]
     return []
 

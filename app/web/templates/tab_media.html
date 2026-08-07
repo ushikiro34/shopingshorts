@@ -30,11 +30,16 @@
     {% if not selected %}
     <div class="empty-banner">왼쪽 목록에서 상품을 선택해주세요.</div>
     {% else %}
-    <h2 style="margin-top:0;">{{ selected.product_name }}</h2>
+    <h2 style="margin-top:0;">
+      {{ selected.product_name }}
+      {% if render_elapsed_label %}
+      <span class="render-elapsed-badge">⏱ {{ render_elapsed_label }} 경과</span>
+      {% endif %}
+    </h2>
     {% if render_job and render_job.status == 'done' %}
     <video controls src="/{{ render_job.output_path.replace('\\', '/') }}"></video>
     {% elif render_job %}
-    <p>🔄 진행중: {{ render_job.status }}</p>
+    <p>🔄 진행중: {{ render_status_label }}</p>
     {% if render_job.status not in ['done', 'failed'] %}
     <script>
       // 렌더링이 끝날 때까지 5초마다 새로고침 — 서버가 다시 렌더링해서 상태가
@@ -77,6 +82,25 @@
     </div>
     {% endif %}
     {% if selected %}
+    {% if hook_patch_in_progress %}
+    <p style="color:var(--text-dim);">🔄 장면을 다시 만들고 있어요 — 완료되면 새로고침해주세요.</p>
+    <script>
+      // render_job.status는 이 작업 중에도 'done'으로 유지된다(원본 job 자체는 재렌더가
+      // 아니라서) — 별도로 폴링해 완료되면 새로고침한다.
+      setTimeout(function () { location.reload(); }, 5000);
+    </script>
+    {% endif %}
+    <form method="post" action="/media/{{ render_job.id if render_job else '' }}/regenerate-hook">
+      <input type="hidden" name="product_id" value="{{ selected.id }}">
+      <button class="btn btn-ghost" type="submit"
+        {% if not is_ready or hook_patch_in_progress %}disabled title="{% if hook_patch_in_progress %}이미 장면을 다시 만드는 중이에요{% else %}렌더링이 끝나면 활성화돼요{% endif %}"{% endif %}>후킹
+        영상만 다시 만들기</button>
+    </form>
+    {% set caption_editable = is_ready and render_job and render_job.base_video_path %}
+    <button type="button" class="btn btn-ghost" id="open-caption-editor-btn"
+      data-editor-url="/media/{{ render_job.id if render_job else '' }}/caption-editor?product_id={{ selected.id }}"
+      {% if not caption_editable %}disabled{% endif %}
+      title="{% if is_ready and render_job and not render_job.base_video_path %}이 영상은 구버전 렌더라 캡션 편집을 지원하지 않아요{% elif not is_ready %}렌더링이 끝나면 활성화돼요{% endif %}">캡션 편집</button>
     <form method="post" action="/media/{{ render_job.id if render_job else '' }}/generate-thumbnail">
       <input type="hidden" name="product_id" value="{{ selected.id }}">
       <button class="btn btn-ghost" type="submit" {% if not is_ready %}disabled title="렌더링이 끝나면 활성화돼요"{% endif %}>{% if thumbnail %}썸네일
@@ -90,4 +114,336 @@
     {% endif %}
   </div>
 </div>
+
+<dialog id="caption-editor-dialog" class="caption-editor-dialog">
+  <div class="caption-editor-dialog-header">
+    <h3>캡션 편집</h3>
+    <!-- method="dialog" 폼은 브라우저가 알아서 가장 가까운 <dialog>를 닫아준다 — 커스텀 JS
+         클릭 핸들러(dialog.close() 수동 호출)가 안 먹는 문제가 있어 표준 방식으로 바꿨다. -->
+    <form method="dialog">
+      <button type="submit" class="caption-editor-dialog-close" aria-label="닫기" title="닫기">✕</button>
+    </form>
+  </div>
+  <div class="caption-editor-dialog-scroll">
+    <div id="caption-editor-dialog-body">불러오는 중...</div>
+  </div>
+</dialog>
+
+<script>
+  (function () {
+    // 캡션 편집기를 별도 페이지로 이동하지 않고 팝업(다이얼로그)으로 띄운다(사용자 피드백) —
+    // /media/{id}/caption-editor GET 응답(풀 페이지)을 fetch로 받아 .caption-editor 부분만
+    // 뽑아서 다이얼로그 안에 넣는다. 저장(POST)도 fetch로 보내 리다이렉트 응답을 그대로
+    // 받아 같은 방식으로 다시 채워 넣는다 — 페이지 자체는 이동하지 않는다.
+    var openBtn = document.getElementById("open-caption-editor-btn");
+    var dialog = document.getElementById("caption-editor-dialog");
+    var body = document.getElementById("caption-editor-dialog-body");
+    if (!openBtn || !dialog) return;
+
+    var savedOnce = false;
+
+    function extractEditorContent(html) {
+      var doc = new DOMParser().parseFromString(html, "text/html");
+      var root = doc.querySelector(".caption-editor");
+      return root ? root.outerHTML : "<p>불러오지 못했어요 (내용을 찾을 수 없어요).</p>";
+    }
+
+    // fetch가 네트워크 자체는 성공했는데 서버가 에러를 반환한 경우(예: 500) fetch는
+    // reject하지 않고 그대로 resolve해버린다 — 상태 코드를 직접 확인해서 알려준다.
+    // AbortController로 타임아웃도 걸어서 원인 모르게 무한정 멈춰있는 상태를 방지한다
+    // (진단 목적). 에디터를 불러올 때(GET)는 몇 초 안에 끝나야 정상이라 30초면 충분하지만,
+    // 저장(POST)은 ffmpeg 재인코딩 때문에 실제로 1~2분이 걸린다 — 호출부에서 timeoutMs를
+    // 넘기지 않으면 기본 30초를 쓴다.
+    function fetchWithDiagnostics(url, options, timeoutMs) {
+      timeoutMs = timeoutMs || 30000;
+      var controller = new AbortController();
+      var timeoutId = setTimeout(function () { controller.abort(); }, timeoutMs);
+      return fetch(url, Object.assign({ signal: controller.signal }, options || {}))
+        .then(function (res) {
+          clearTimeout(timeoutId);
+          if (!res.ok) {
+            return res.text().then(function () {
+              throw new Error("서버 응답 오류 (상태 코드: " + res.status + ")");
+            });
+          }
+          return res.text();
+        })
+        .catch(function (err) {
+          clearTimeout(timeoutId);
+          if (err.name === "AbortError") throw new Error(Math.round(timeoutMs / 1000) + "초 안에 응답이 없었어요 (타임아웃)");
+          throw err;
+        });
+    }
+
+    function initCanvas(canvas) {
+      var img = canvas.querySelector(".cap-editor-bg");
+      var items = canvas.querySelectorAll(".cap-editor-item");
+      if (!img) return;
+
+      function layout() {
+        var scale = (img.clientWidth || canvas.clientWidth) / parseFloat(img.dataset.canvasW);
+        items.forEach(function (item) {
+          item.style.left = (parseFloat(item.dataset.x) * scale) + "px";
+          item.style.top = (parseFloat(item.dataset.y) * scale) + "px";
+        });
+        canvas.dataset.scale = scale;
+      }
+
+      if (img.complete && img.naturalWidth > 0) layout();
+      img.addEventListener("load", layout);
+      img.addEventListener("error", layout); // 이미지가 실패해도 최소한 좌표는 깨지지 않게
+
+      items.forEach(function (item) {
+        var dragging = false, startX, startY, startLeft, startTop;
+        item.addEventListener("mousedown", function (e) {
+          dragging = true;
+          startX = e.clientX; startY = e.clientY;
+          startLeft = parseFloat(item.style.left) || 0;
+          startTop = parseFloat(item.style.top) || 0;
+          e.preventDefault();
+        });
+        document.addEventListener("mousemove", function (e) {
+          if (!dragging) return;
+          var scale = parseFloat(canvas.dataset.scale) || 1;
+          var newLeft = startLeft + (e.clientX - startX);
+          var newTop = startTop + (e.clientY - startY);
+          item.style.left = newLeft + "px";
+          item.style.top = newTop + "px";
+          item.dataset.x = Math.round(newLeft / scale);
+          item.dataset.y = Math.round(newTop / scale);
+        });
+        document.addEventListener("mouseup", function () { dragging = false; });
+      });
+    }
+
+    function initEditor(root) {
+      root.querySelectorAll(".cap-editor-canvas").forEach(initCanvas);
+
+      root.querySelectorAll("[data-scene-regen]").forEach(function (card) {
+        var regenBtn = card.querySelector(".scene-regen-btn");
+        var textarea = card.querySelector(".scene-regen-visual");
+        regenBtn.addEventListener("click", function () {
+          var label = regenBtn.querySelector(".btn-label");
+          var spinner = regenBtn.querySelector(".btn-spinner");
+          regenBtn.disabled = true;
+          label.textContent = "요청하는 중...";
+          spinner.hidden = false;
+
+          var productIdInput = root.querySelector('input[name="product_id"]');
+          var formData = new FormData();
+          formData.append("product_id", productIdInput ? productIdInput.value : "");
+          formData.append("target_seq", card.dataset.seq);
+          formData.append("visual", textarea.value);
+
+          fetchWithDiagnostics("/media/" + card.dataset.renderJobId + "/regenerate-hook", { method: "POST", body: formData })
+            .then(function () {
+              label.textContent = "요청했어요 — 완료되면 새로고침해주세요";
+            })
+            .catch(function (err) {
+              regenBtn.disabled = false;
+              label.textContent = "실패: " + err.message;
+              spinner.hidden = true;
+            });
+        });
+      });
+
+      root.querySelectorAll(".cap-font-size").forEach(function (slider) {
+        var valueEl = slider.parentElement.querySelector(".cap-font-size-value");
+        slider.addEventListener("input", function () {
+          valueEl.textContent = slider.value;
+        });
+      });
+
+      var form = root.querySelector("#caption-editor-form");
+      if (!form) return;
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var overrides = {};
+        root.querySelectorAll(".cap-editor-item").forEach(function (item) {
+          var seq = item.dataset.seq, type = item.dataset.type;
+          var controls = root.querySelector(
+            '.cap-editor-controls[data-seq="' + seq + '"][data-type="' + type + '"]'
+          );
+          if (!controls) return;
+          overrides[seq] = overrides[seq] || {};
+          overrides[seq][type] = {
+            text: controls.querySelector(".cap-text").value,
+            x: parseInt(item.dataset.x, 10),
+            y: parseInt(item.dataset.y, 10),
+            font: controls.querySelector(".cap-font").value,
+            font_size: parseInt(controls.querySelector(".cap-font-size").value, 10),
+            text_color: controls.querySelector(".cap-text-color").value,
+            bg_enabled: controls.querySelector(".cap-bg-enabled").checked,
+            bg_color: controls.querySelector(".cap-bg-color").value,
+            bg_opacity: parseFloat(controls.querySelector(".cap-bg-opacity").value),
+          };
+        });
+        root.querySelector("#overrides-json-input").value = JSON.stringify(overrides);
+
+        var btn = root.querySelector("#caption-editor-save-btn");
+        btn.disabled = true;
+        btn.querySelector(".btn-label").textContent = "저장하는 중... (1~2분 걸려요)";
+        btn.querySelector(".btn-spinner").hidden = false;
+
+        // 저장은 ffmpeg 재인코딩(1~2분)을 동기로 기다리는 요청이라 넉넉하게 3분을 준다 —
+        // 기본 30초 타임아웃(에디터 로딩용)을 그대로 쓰면 정상 처리 중에도 매번 타임아웃
+        // 에러가 뜬다(사용자 피드백: "30초 안에 응답이 없었어요" 오류로 항상 실패).
+        fetchWithDiagnostics(form.action, { method: "POST", body: new FormData(form) }, 180000)
+          .then(function (html) {
+            savedOnce = true;
+            body.innerHTML = extractEditorContent(html);
+            initEditor(body);
+          })
+          .catch(function (err) {
+            btn.disabled = false;
+            btn.querySelector(".btn-label").textContent = "저장 실패: " + err.message;
+            btn.querySelector(".btn-spinner").hidden = true;
+          });
+      });
+    }
+
+    openBtn.addEventListener("click", function () {
+      body.innerHTML = "불러오는 중...";
+      dialog.showModal();
+      fetchWithDiagnostics(openBtn.dataset.editorUrl)
+        .then(function (html) {
+          body.innerHTML = extractEditorContent(html);
+          initEditor(body);
+        })
+        .catch(function (err) {
+          body.innerHTML = "<p>불러오지 못했어요: " + err.message + "</p>";
+        });
+    });
+
+    dialog.addEventListener("close", function () {
+      // 저장을 한 번이라도 했으면 뒤에 있는 영상 미리보기가 최신 final.mp4를 반영하도록
+      // 새로고침한다 — 페이지 이동 없이 다이얼로그로 처리한 대신, 닫을 때 한 번만 반영한다.
+      if (savedOnce) location.reload();
+    });
+  })();
+</script>
+
+<style>
+  /* 브라우저 기본값은 "dialog { display:none } / dialog[open] { display:block }"이다 —
+     클래스 선택자(.caption-editor-dialog)가 타입 선택자(dialog)보다 우선순위가 높아서,
+     [open] 없이도 display:flex가 항상 이겨버려 다이얼로그가 열리지 않았는데도 계속
+     화면에 떠 있던 버그가 있었다(사용자 피드백: 페이지 진입만 해도 이미 떠있음). [open]을
+     선택자에 포함시켜 "열렸을 때만" 이 레이아웃이 적용되게 고쳤다 — 닫힌 상태의 기본
+     display:none은 브라우저 기본 규칙이 그대로 담당한다. */
+  .caption-editor-dialog[open] {
+    width: min(860px, 92vw);
+    max-height: 88vh;
+    border: 1px solid var(--border);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    /* 어두운 앱 배경과 구분되도록 다이얼로그 안쪽만 밝은 톤으로 재정의한다 — 자식
+       컴포넌트들이 이미 var(--text)/var(--card)/var(--border)를 참조하고 있어서
+       변수만 새로 선언하면 버튼/인풋/라벨까지 한 번에 밝은 톤으로 맞춰진다. */
+    --text: #211d17;
+    --text-dim: #6f6656;
+    --card: #ffffff;
+    --border: #ddd6c8;
+    background: #f7f3ec;
+    color: var(--text);
+  }
+  .caption-editor-dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+  /* 헤더(타이틀+닫기)는 고정, 아래 내용만 스크롤되게 한다(사용자 피드백). 흰 배경 +
+     은은한 그림자로 스크롤되는 씬 목록 위에 "떠 있는" 툴바처럼 보이게 한다(디자인
+     개선 피드백). */
+  .caption-editor-dialog-header {
+    flex: 0 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 22px;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  }
+  .caption-editor-dialog-header h3 {
+    margin: 0;
+    font-size: 19px;
+  }
+  /* 텍스트 버튼("닫기 ✕") 대신 원형 아이콘 버튼으로 — 모달 닫기 버튼의 흔한 관례를
+     따라 더 가볍고 정돈된 인상을 준다. */
+  .caption-editor-dialog-close {
+    flex: 0 0 auto;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: var(--gray-tint);
+    color: var(--text-dim);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .caption-editor-dialog-close:hover {
+    background: var(--border);
+    color: var(--text);
+  }
+  .caption-editor-dialog-scroll { flex: 1 1 auto; overflow-y: auto; padding: 20px; }
+  .caption-editor-dialog .back-to-list,
+  .caption-editor-dialog-scroll .caption-editor > h2,
+  .caption-editor-dialog-scroll .caption-editor > p { display: none; } /* 다이얼로그 안에선 고정 헤더로 대체 */
+
+  /* 저장 버튼도 헤더처럼 고정하고 안쪽 씬 목록만 스크롤되게 한다(사용자 피드백) — 버튼을
+     스크롤 영역 밖으로 옮기는 대신, 스크롤 컨테이너 안에서 position:sticky로 바닥에
+     붙인다. 이 버튼은 폼(#caption-editor-form) 맨 끝의 마지막 자식이라 sticky가 스크롤
+     내내 화면 하단에 붙어있는 채로 유지된다. 좌우/아래 음수 마진 + 너비 보정으로 스크롤
+     컨테이너의 20px 패딩을 상쇄해 다이얼로그 가장자리까지 꽉 채운다. */
+  .caption-editor-dialog-scroll #caption-editor-save-btn {
+    position: sticky;
+    bottom: -20px;
+    margin: 16px -20px -20px -20px;
+    width: calc(100% + 40px);
+    border-top: 1px solid var(--border);
+    z-index: 1;
+  }
+
+  /* caption_editor.html의 .cap-editor-* 스타일과 동일 — 다이얼로그로 fetch해서 넣을 때는
+     그 페이지의 <style> 태그가 같이 딸려오지 않아서(outerHTML 추출은 .caption-editor
+     안쪽만) 여기 다이얼로그 쪽에도 같은 스타일을 둔다. */
+  /* 씬마다 구분선 하나뿐이라 구분감이 약하다는 피드백 — 카드 리스트 형태(배경+테두리+
+     둥근 모서리+그림자)로 확실하게 분리한다. */
+  .cap-editor-scene {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+    padding: 18px;
+    margin-bottom: 20px;
+  }
+  .cap-editor-scene:last-child { margin-bottom: 0; }
+  .cap-editor-scene-label { font-weight: 700; margin-bottom: 8px; }
+  .cap-editor-scene-row { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .cap-editor-canvas { width: 100%; max-width: 220px; flex: 0 0 auto; }
+  .cap-editor-controls-list { flex: 1 1 280px; min-width: 240px; display: flex; flex-direction: column; gap: 14px; }
+  .cap-editor-item {
+    background: rgba(255, 230, 0, 0.25);
+    border: 1px dashed #FFE600;
+    color: #fff;
+    font-size: 11px;
+    padding: 2px 6px;
+    cursor: move;
+    user-select: none;
+    white-space: nowrap;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cap-editor-controls { width: 100%; }
+  .cap-editor-controls-row { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+  .cap-mini-field { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+  .cap-mini-field-checkbox { flex-direction: row; align-items: center; gap: 6px; }
+  .cap-mini-label { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+  .cap-font-size-row { display: flex; align-items: center; gap: 8px; }
+  .cap-font-size-row input[type=range] { flex: 1 1 auto; }
+  .cap-font-size-value { font-size: 12px; color: var(--text-dim); min-width: 28px; text-align: center; }
+</style>
 {% endblock %}

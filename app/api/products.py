@@ -4,13 +4,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, model_validator
 
 from app.api.common import get_product_or_404
-from app.config import DEFAULT_MIN_SCORE, DEFAULT_TARGET_PERSONA, SCRIPT_TONES
+from app.config import DEFAULT_MIN_SCORE, DEFAULT_TARGET_PERSONA
 from app.coupang.partners import CoupangPartnersError, create_deeplinks, search_products
 from app.db import get_client
 from app.discovery.education import detect_needs_education
 from app.discovery.scoring import MAX_TOTAL_SCORE, ScoreInputs, calculate_score, score_story
 from app.discovery.story_heuristic import count_emotional_keywords
 from app.review.analyzer import ReviewAnalysisError, analyze_reviews
+from app.script.formats import active_tone_choices
 from app.script.generator import ScriptGenerationError, generate_script
 from app.script.validator import ScriptValidationError, validate_script
 
@@ -261,8 +262,8 @@ def generate_product_script(product_id: str, payload: GenerateScriptRequest):
     client = get_client()
     product = get_product_or_404(client, product_id)
 
-    if payload.tone not in SCRIPT_TONES:
-        raise HTTPException(status_code=400, detail=f"tone은 {SCRIPT_TONES} 중 하나여야 합니다.")
+    if payload.tone not in active_tone_choices():
+        raise HTTPException(status_code=400, detail=f"tone은 {active_tone_choices()} 중 하나여야 합니다.")
 
     review = _get_latest_review_or_400(client, product_id)
     analysis_result = (

@@ -50,4 +50,9 @@ def current_user(request: Request) -> dict | None:
 
 
 def is_public_path(path: str) -> bool:
+    # "/"는 로그인 여부에 따라 랜딩페이지/대시보드를 갈라 보여주는 라우트 자체가 판단하므로
+    # 미들웨어 단에서 먼저 막지 않는다 — 단, 정확히 "/"일 때만이다("/"를 접두사 목록에
+    # 넣으면 모든 경로가 "/"로 시작해 전부 공개돼버리는 함정이 있어 별도 분기로 뺐다).
+    if path == "/":
+        return True
     return any(path == prefix or path.startswith(prefix + "/") or path.startswith(prefix) for prefix in PUBLIC_PATH_PREFIXES)

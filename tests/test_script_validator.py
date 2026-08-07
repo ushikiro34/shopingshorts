@@ -225,3 +225,73 @@ def test_description_not_ending_with_disclosure_rejected():
 def test_disclosure_placement_passes_when_correct():
     errors = validate_disclosure_placement(_base_script())
     assert errors == []
+
+
+# v2.4: 형식(tone)마다 구조가 달라질 수 있다 — 표준 6단계가 아닌 형식도 정상 검증되는지 확인.
+
+
+def _giphok_script(**overrides) -> dict:
+    """기획천재발견형(전용 구조: hook/discovery/design_insight/more_details/daily_use/
+    product_cta)의 유효한 대본 픽스처 — 표준 6단계 전용이 아님을 증명하는 회귀 테스트용."""
+    script = {
+        "structure": {
+            "hook": "이거 자꾸 손이 가더라고요",
+            "discovery": "우연히 발견한 물건인데",
+            "design_insight": "이 부분 설계가 진짜 똑똑해요",
+            "more_details": "디테일도 곳곳이 다 이런 식이에요",
+            "daily_use": "매일 쓰다 보니 일상이 편해졌어요",
+            "product_cta": "이 제품 하나면 충분해요. 제품정보는 본문에 있어요, 확인해보세요.",
+        },
+        "educational_note": {"included": False, "text": ""},
+        "tone": "기획천재발견형",
+        "scenes": [
+            {"seq": 1, "stage": "hook", "narration": "이거 자꾸 손이 가더라고요", "caption": "후킹", "image_index": 0, "duration_sec": 6},
+            {"seq": 2, "stage": "discovery", "narration": "우연히 발견한 물건인데", "caption": "발견", "image_index": 0, "duration_sec": 6},
+            {"seq": 3, "stage": "design_insight", "narration": "이 부분 설계가 진짜 똑똑해요", "caption": "인사이트", "image_index": 1, "duration_sec": 8},
+            {"seq": 4, "stage": "more_details", "narration": "디테일도 곳곳이 다 이런 식이에요", "caption": "디테일", "image_index": 1, "duration_sec": 6},
+            {"seq": 5, "stage": "daily_use", "narration": "매일 쓰다 보니 일상이 편해졌어요", "caption": "일상", "image_index": 2, "duration_sec": 6},
+            {"seq": 6, "stage": "product_cta", "narration": "이 제품 하나면 충분해요", "caption": "상품", "image_index": 2, "duration_sec": 6},
+        ],
+        "disclosure": PARTNERS_DISCLOSURE,
+        "estimated_duration_sec": 38,
+        "youtube": {
+            "title": "t",
+            "description": f"똑똑한 설계의 발견. 구매 링크는 본문 더보기에서 확인해 주세요.\n\n{PARTNERS_DISCLOSURE}",
+            "tags": ["tag"],
+        },
+    }
+    script.update(overrides)
+    return script
+
+
+def test_custom_structure_format_valid_script_passes():
+    validate_script(_giphok_script(), reviews_raw="이 상품 정말 좋아요 잘 쓰고 있습니다", needs_education=False)
+
+
+def test_custom_structure_format_standard_stage_name_rejected():
+    # 표준 6단계 형식의 stage 이름("empathy")은 기획천재발견형에서는 유효하지 않아야 한다.
+    script = _giphok_script()
+    script["scenes"][0]["stage"] = "empathy"
+    with pytest.raises(ScriptValidationError) as exc:
+        validate_script(script, reviews_raw="", needs_education=False)
+    assert any("stage" in e for e in exc.value.errors)
+
+
+def test_cta_redirect_check_uses_format_cta_stage_not_hardcoded_product():
+    # 글로벌 인사이트형은 cta_stage가 "product"가 아니라 "cta"다 — 하드코딩이 아니라
+    # 형식별로 동적으로 조회되는지 증명한다.
+    script = _base_script(tone="글로벌 인사이트형")
+    script["structure"] = {
+        "insight_hook": "...",
+        "trend_context": "...",
+        "logic_application": "...",
+        "product_solution": "...",
+        "result": "...",
+        "cta": "이 제품 하나로 시작하세요. 본문에서 확인하세요.",
+    }
+    assert validate_cta_redirects_to_description(script) == []
+
+    script["structure"]["cta"] = "이 제품 정말 좋아요."  # 링크 확인 유도 문구 없음
+    errors = validate_cta_redirects_to_description(script)
+    assert errors
+    assert any("cta" in e for e in errors)

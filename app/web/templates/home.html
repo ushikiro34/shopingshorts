@@ -1,59 +1,255 @@
-{% extends "base.html" %}
-{% block title %}대시보드 · couparvi{% endblock %}
-{% block content %}
-<div class="dash-greeting-row">
-  <div>
-    <p class="dash-greeting-sub">안녕하세요, {{ user.email.split('@')[0] if user else '' }} 님 · {{ today_label }}</p>
-    <h1 class="dash-headline">오늘도 좋은 광고를<br>만들어봐요</h1>
-  </div>
-  <a class="btn dash-new-btn" href="/discover">+ 새 광고제작</a>
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>대시보드 · couparvi</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "primary-container": "#cc7e6b",
+                    "on-secondary-container": "#696159",
+                    "secondary-fixed-dim": "#d0c5bb",
+                    "on-primary-fixed-variant": "#723526",
+                    "on-secondary-fixed-variant": "#4d463e",
+                    "primary-fixed-dim": "#ffb4a2",
+                    "on-tertiary-fixed-variant": "#474747",
+                    "secondary-container": "#e9ded4",
+                    "outline": "#86736e",
+                    "inverse-on-surface": "#f2f0ee",
+                    "tertiary-container": "#939292",
+                    "on-tertiary": "#ffffff",
+                    "inverse-primary": "#ffb4a2",
+                    "inverse-surface": "#30302f",
+                    "outline-variant": "#d9c1bc",
+                    "on-surface": "#1b1c1b",
+                    "surface-container-lowest": "#ffffff",
+                    "error": "#ba1a1a",
+                    "on-background": "#1b1c1b",
+                    "surface-bright": "#fbf9f7",
+                    "primary-fixed": "#ffdad2",
+                    "on-error": "#ffffff",
+                    "on-primary-container": "#4e1a0e",
+                    "secondary": "#655d55",
+                    "tertiary": "#5f5e5e",
+                    "surface-container": "#efedec",
+                    "on-secondary-fixed": "#201b15",
+                    "on-secondary": "#ffffff",
+                    "background": "#fbf9f7",
+                    "surface-variant": "#e4e2e0",
+                    "on-tertiary-container": "#2b2b2b",
+                    "on-surface-variant": "#53433f",
+                    "surface-container-highest": "#e4e2e0",
+                    "secondary-fixed": "#ece0d7",
+                    "surface": "#fbf9f7",
+                    "on-primary-fixed": "#3a0b02",
+                    "on-error-container": "#93000a",
+                    "tertiary-fixed-dim": "#c8c6c6",
+                    "on-tertiary-fixed": "#1b1c1c",
+                    "surface-dim": "#dbdad8",
+                    "surface-container-low": "#f5f3f1",
+                    "primary": "#8e4c3b",
+                    "surface-tint": "#8e4c3b",
+                    "error-container": "#ffdad6",
+                    "tertiary-fixed": "#e4e2e1",
+                    "surface-container-high": "#eae8e6",
+                    "on-primary": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "margin-mobile": "20px",
+                    "gutter": "24px",
+                    "unit": "4px",
+                    "container-max": "1280px",
+                    "margin-desktop": "48px"
+            },
+            "fontFamily": {
+                    "body-md": ["Hanken Grotesk"],
+                    "headline-lg": ["Newsreader"],
+                    "body-lg": ["Hanken Grotesk"],
+                    "display-lg": ["Newsreader"],
+                    "headline-md": ["Newsreader"],
+                    "label-sm": ["Hanken Grotesk"],
+                    "headline-lg-mobile": ["Newsreader"],
+                    "label-md": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                    "body-md": ["14px", { "lineHeight": "20px", "fontWeight": "400" }],
+                    "headline-lg": ["22px", { "lineHeight": "28px", "fontWeight": "500" }],
+                    "body-lg": ["15px", { "lineHeight": "22px", "fontWeight": "400" }],
+                    "display-lg": ["32px", { "lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                    "headline-md": ["17px", { "lineHeight": "24px", "fontWeight": "500" }],
+                    "label-sm": ["11px", { "lineHeight": "14px", "letterSpacing": "0.03em", "fontWeight": "500" }],
+                    "headline-lg-mobile": ["19px", { "lineHeight": "26px", "fontWeight": "500" }],
+                    "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.01em", "fontWeight": "600" }]
+            }
+    },
+        },
+      }
+    </script>
+<style>
+        body { background-color: #F7EBE1; }
+        .soft-lift { box-shadow: 0 10px 30px -10px rgba(142, 76, 59, 0.08), 0 4px 10px -4px rgba(142, 76, 59, 0.04); }
+        .btn-inner-shadow { box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.15), inset 0 -2px 0 rgba(0, 0, 0, 0.05); }
+    </style>
+</head>
+<body class="text-on-background font-body-md antialiased min-h-screen flex flex-col md:flex-row">
+<!-- SideNavBar (Desktop/Tablet) -->
+<aside class="hidden md:flex flex-col h-screen w-64 fixed left-0 top-0 bg-surface-container-low border-r border-outline-variant py-8 px-4 z-50">
+<div class="flex items-center gap-3 mb-10 px-2">
+<div class="w-9 h-9 rounded-full bg-primary flex items-center justify-center text-on-primary font-headline-md">c</div>
+<div>
+<h2 class="font-headline-md text-headline-md text-primary truncate">couparvi</h2>
 </div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 bg-primary-container text-on-primary-container rounded-xl px-4 py-2.5 font-label-sm text-label-sm" href="/">
+<svg class="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+                대시보드
+            </a>
+<a class="flex items-center gap-3 text-on-surface-variant px-4 py-2.5 font-label-sm text-label-sm hover:bg-secondary-container rounded-xl transition-all duration-300" href="/discover">
+<svg class="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                상품선택
+            </a>
+<a class="flex items-center gap-3 text-on-surface-variant px-4 py-2.5 font-label-sm text-label-sm hover:bg-secondary-container rounded-xl transition-all duration-300" href="/scripts">
+<svg class="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                대본작성
+            </a>
+<a class="flex items-center gap-3 text-on-surface-variant px-4 py-2.5 font-label-sm text-label-sm hover:bg-secondary-container rounded-xl transition-all duration-300" href="/prompts">
+<svg class="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                프롬프트 확인
+            </a>
+<a class="flex items-center gap-3 text-on-surface-variant px-4 py-2.5 font-label-sm text-label-sm hover:bg-secondary-container rounded-xl transition-all duration-300" href="/media">
+<svg class="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="15" height="14" rx="2"/><path d="M17 9l5-3v12l-5-3"/></svg>
+                미디어제작
+            </a>
+<a class="flex items-center gap-3 text-on-surface-variant px-4 py-2.5 font-label-sm text-label-sm hover:bg-secondary-container rounded-xl transition-all duration-300" href="/publish">
+<svg class="w-[18px] h-[18px] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+                게시검토
+            </a>
+</nav>
+<div class="mt-auto space-y-3">
+<a class="w-full bg-primary text-on-primary rounded-xl py-2.5 font-label-sm text-label-sm btn-inner-shadow hover:opacity-90 transition-opacity flex items-center justify-center gap-2" href="/discover">
+<svg class="w-[16px] h-[16px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                새 광고제작
+            </a>
+<div class="border-t border-outline-variant pt-3 space-y-1">
+<a class="flex items-center gap-3 text-on-surface-variant px-4 py-1.5 font-label-sm text-label-sm hover:text-primary transition-colors" href="#">
+<svg class="w-[15px] h-[15px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    설정
+                </a>
+</div>
+<div class="border-t border-outline-variant pt-3 flex items-center gap-3 px-2">
+<div class="w-7 h-7 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container font-label-sm text-label-sm shrink-0">{{ user.email[0]|upper if user else "?" }}</div>
+<div class="flex-1 min-w-0">
+<p class="font-label-sm text-label-sm text-on-surface truncate">{{ user.email if user else "" }}</p>
+<a class="font-label-sm text-label-sm text-on-surface-variant hover:text-primary transition-colors" href="/logout">로그아웃</a>
+</div>
+</div>
+</div>
+</aside>
+<!-- TopNavBar (Mobile Only) -->
+<header class="md:hidden flex justify-between items-center w-full px-margin-mobile py-4 bg-surface border-b border-outline-variant sticky top-0 z-50">
+<span class="text-headline-md font-headline-md text-primary italic">couparvi</span>
+<a class="text-on-surface-variant hover:text-primary transition-colors" href="/logout">
+<svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+</a>
+</header>
+<!-- Main Content Area -->
+<main class="flex-1 md:ml-64 w-full max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-5 md:py-6 flex flex-col gap-5">
+<header class="mt-2 md:mt-6">
+<h1 class="font-headline-lg-mobile md:font-display-lg text-headline-lg-mobile md:text-display-lg text-on-surface mb-1">안녕하세요,</h1>
+<p class="font-body-md text-body-md text-on-surface-variant">오늘 어떤 쇼츠를 만들어볼까요? · {{ today_label }}</p>
+</header>
 
-<div class="summary-grid">
-  <a class="summary-card" href="/discover">
-    <div class="num">{{ counts.discover }}</div>
-    <div class="label">상품선택</div>
-  </a>
-  <a class="summary-card" href="/scripts">
-    <div class="num">{{ counts.script }}</div>
-    <div class="label">대본작성</div>
-  </a>
-  <a class="summary-card" href="/media">
-    <div class="num">{{ counts.media }}</div>
-    <div class="label">미디어제작</div>
-  </a>
-  <a class="summary-card{% if counts.publish > 0 %} warning{% endif %}" href="/publish">
-    <div class="num">{{ counts.publish }}</div>
-    <div class="label">게시검토</div>
-  </a>
-</div>
+<a class="md:hidden bg-primary text-on-primary rounded-xl py-2.5 px-6 font-label-sm text-label-sm btn-inner-shadow hover:opacity-90 transition-opacity flex items-center justify-center gap-2" href="/discover">
+<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                새 광고제작
+            </a>
 
-<div class="dash-section-head">
-  <h2 class="dash-section-title">내 프로젝트</h2>
+<!-- 파이프라인 단계별 대기 건수 -->
+<section class="grid grid-cols-2 md:grid-cols-5 gap-2.5">
+<a class="bg-surface-container-lowest rounded-xl border border-outline-variant p-2.5 soft-lift hover:-translate-y-1 transition-transform duration-300" href="/discover">
+<div class="flex items-center gap-1.5">
+<svg class="w-[16px] h-[16px] text-on-surface-variant shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+<span class="font-headline-md text-headline-md text-on-surface">{{ counts.discover }}</span>
 </div>
+<div class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">상품선택</div>
+</a>
+<a class="bg-surface-container-lowest rounded-xl border border-outline-variant p-2.5 soft-lift hover:-translate-y-1 transition-transform duration-300" href="/scripts">
+<div class="flex items-center gap-1.5">
+<svg class="w-[16px] h-[16px] text-on-surface-variant shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+<span class="font-headline-md text-headline-md text-on-surface">{{ counts.script }}</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">대본작성</div>
+</a>
+<a class="bg-surface-container-lowest rounded-xl border border-outline-variant p-2.5 soft-lift hover:-translate-y-1 transition-transform duration-300" href="/prompts">
+<div class="flex items-center gap-1.5">
+<svg class="w-[16px] h-[16px] text-on-surface-variant shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+<span class="font-headline-md text-headline-md text-on-surface">{{ counts.prompts }}</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">프롬프트 확인</div>
+</a>
+<a class="bg-surface-container-lowest rounded-xl border border-outline-variant p-2.5 soft-lift hover:-translate-y-1 transition-transform duration-300" href="/media">
+<div class="flex items-center gap-1.5">
+<svg class="w-[16px] h-[16px] text-on-surface-variant shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="15" height="14" rx="2"/><path d="M17 9l5-3v12l-5-3"/></svg>
+<span class="font-headline-md text-headline-md text-on-surface">{{ counts.media }}</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">미디어제작</div>
+</a>
+<a class="bg-surface-container-lowest rounded-xl border {% if counts.publish > 0 %}border-primary{% else %}border-outline-variant{% endif %} p-2.5 soft-lift hover:-translate-y-1 transition-transform duration-300" href="/publish">
+<div class="flex items-center gap-1.5">
+<svg class="w-[16px] h-[16px] {% if counts.publish > 0 %}text-primary{% else %}text-on-surface-variant{% endif %} shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>
+<span class="font-headline-md text-headline-md {% if counts.publish > 0 %}text-primary{% else %}text-on-surface{% endif %}">{{ counts.publish }}</span>
+</div>
+<div class="font-label-sm text-label-sm text-on-surface-variant mt-0.5">게시검토</div>
+</a>
+</section>
 
-<div class="panel project-panel">
-  <div class="project-grid">
-    {% for p in recent_projects %}
-    <a class="project-card" href="/{{ p.tab }}?selected={{ p.id }}&view=detail">
-      <div class="project-card-thumb">
-        {% if p.image_url %}<img src="{{ p.image_url }}" alt="">{% endif %}
-      </div>
-      <div class="project-card-body">
-        <div class="project-card-name">{{ p.name }}</div>
-        <div class="project-card-stats">
-          <span class="project-card-meta">{{ p.category }}</span>
-          <span class="project-card-date">{{ p.created_date }}</span>
-        </div>
-        <div class="project-card-badge-row">
-          <span class="pill pill-status-{{ p.status_tier }} project-card-badge">{{ p.status_label }}</span>
-        </div>
-      </div>
-    </a>
-    {% endfor %}
-    {% for _ in range(6 - recent_projects|length) %}
-    <div class="project-card project-card-empty"></div>
-    {% endfor %}
-  </div>
+<!-- Projects Grid -->
+<section class="mt-4">
+<div class="flex items-center justify-between mb-3">
+<h2 class="font-headline-md text-headline-md text-on-surface">My Projects</h2>
+{% if recent_projects|length > 4 %}
+<button type="button" id="projects-more-btn" onclick="
+      document.getElementById('projects-extra').classList.toggle('hidden');
+      this.textContent = document.getElementById('projects-extra').classList.contains('hidden') ? '더보기' : '접기';
+    " class="font-label-sm text-label-sm text-on-surface-variant border border-outline-variant rounded-full px-3 py-1 hover:bg-secondary-container transition-colors">더보기</button>
+{% endif %}
 </div>
-{% endblock %}
+{% if recent_projects %}
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+{% for p in recent_projects[:4] %}
+{% include "_project_card.html" %}
+{% endfor %}
+</div>
+{% if recent_projects|length > 4 %}
+<div id="projects-extra" class="hidden grid grid-cols-2 lg:grid-cols-4 gap-3 mt-3">
+{% for p in recent_projects[4:] %}
+{% include "_project_card.html" %}
+{% endfor %}
+</div>
+{% endif %}
+{% else %}
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant p-8 text-center">
+<p class="font-body-md text-body-md text-on-surface-variant">아직 진행 중인 프로젝트가 없어요.</p>
+<a class="inline-flex items-center gap-2 mt-3 bg-primary text-on-primary rounded-xl px-5 py-2.5 font-label-sm text-label-sm btn-inner-shadow hover:opacity-90 transition-opacity" href="/discover">
+<svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    새 광고제작 시작하기
+                </a>
+</div>
+{% endif %}
+</section>
+</main>
+</body></html>

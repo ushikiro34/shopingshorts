@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ShortsMaker - Template Library</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&amp;family=Newsreader:ital,wght@0,400;0,500;0,600;1,400;1,500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-container": "#cc7e6b",
+                        "on-secondary-container": "#696159",
+                        "secondary-fixed-dim": "#d0c5bb",
+                        "on-primary-fixed-variant": "#723526",
+                        "on-secondary-fixed-variant": "#4d463e",
+                        "primary-fixed-dim": "#ffb4a2",
+                        "on-tertiary-fixed-variant": "#474747",
+                        "secondary-container": "#e9ded4",
+                        "outline": "#86736e",
+                        "inverse-on-surface": "#f2f0ee",
+                        "tertiary-container": "#939292",
+                        "on-tertiary": "#ffffff",
+                        "inverse-primary": "#ffb4a2",
+                        "inverse-surface": "#30302f",
+                        "outline-variant": "#d9c1bc",
+                        "on-surface": "#1b1c1b",
+                        "surface-container-lowest": "#ffffff",
+                        "error": "#ba1a1a",
+                        "on-background": "#1b1c1b",
+                        "surface-bright": "#fbf9f7",
+                        "primary-fixed": "#ffdad2",
+                        "on-error": "#ffffff",
+                        "on-primary-container": "#4e1a0e",
+                        "secondary": "#655d55",
+                        "tertiary": "#5f5e5e",
+                        "surface-container": "#efedec",
+                        "on-secondary-fixed": "#201b15",
+                        "on-secondary": "#ffffff",
+                        "background": "#fbf9f7",
+                        "surface-variant": "#e4e2e0",
+                        "on-tertiary-container": "#2b2b2b",
+                        "on-surface-variant": "#53433f",
+                        "surface-container-highest": "#e4e2e0",
+                        "secondary-fixed": "#ece0d7",
+                        "surface": "#fbf9f7",
+                        "on-primary-fixed": "#3a0b02",
+                        "on-error-container": "#93000a",
+                        "tertiary-fixed-dim": "#c8c6c6",
+                        "on-tertiary-fixed": "#1b1c1c",
+                        "surface-dim": "#dbdad8",
+                        "surface-container-low": "#f5f3f1",
+                        "primary": "#8e4c3b",
+                        "surface-tint": "#8e4c3b",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed": "#e4e2e1",
+                        "surface-container-high": "#eae8e6",
+                        "on-primary": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin-mobile": "20px",
+                        "gutter": "24px",
+                        "unit": "4px",
+                        "container-max": "1280px",
+                        "margin-desktop": "48px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Hanken Grotesk"],
+                        "headline-lg": ["Newsreader"],
+                        "body-lg": ["Hanken Grotesk"],
+                        "display-lg": ["Newsreader"],
+                        "headline-md": ["Newsreader"],
+                        "label-sm": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Newsreader"],
+                        "label-md": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "fontWeight": "500" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "500" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-lg-mobile": ["28px", { "lineHeight": "36px", "fontWeight": "500" }],
+                        "label-md": ["14px", { "lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { background-color: #fbf9f7; color: #1b1c1b; }
+        .soft-lift { box-shadow: 0 8px 24px -4px rgba(27, 28, 27, 0.08), 0 4px 8px -4px rgba(27, 28, 27, 0.04); }
+        .soft-lift-hover:hover { box-shadow: 0 12px 32px -4px rgba(27, 28, 27, 0.12), 0 6px 12px -4px rgba(27, 28, 27, 0.06); transform: translateY(-2px); }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="font-body-md text-body-md bg-surface text-on-surface antialiased flex">
+<!-- SideNavBar -->
+<nav class="h-screen w-64 fixed left-0 top-0 bg-surface-container-low dark:bg-surface-container-lowest border-r border-outline-variant shadow-sm dark:shadow-none flex flex-col py-8 px-4 z-50">
+<div class="mb-10 px-4">
+<h1 class="font-headline-md text-primary mb-1">Boutique Studio</h1>
+<p class="font-label-sm text-on-surface-variant">Premium Plan</p>
+</div>
+<div class="flex-1 flex flex-col gap-2 font-label-md text-label-md">
+<a class="flex items-center gap-3 text-on-surface-variant dark:text-secondary-fixed-dim px-4 py-3 hover:bg-secondary-container dark:hover:bg-on-secondary-fixed-variant rounded-xl transition-all duration-300 scale-95 active:scale-90 transition-transform cursor-pointer" href="#">
+<span class="material-symbols-outlined" data-icon="video_library">video_library</span>
+                Projects
+            </a>
+<a class="flex items-center gap-3 bg-primary-container dark:bg-on-primary-fixed-variant text-on-primary-container dark:text-primary-fixed rounded-xl px-4 py-3 scale-95 active:scale-90 transition-transform cursor-pointer" href="#">
+<span class="material-symbols-outlined" data-icon="auto_awesome">auto_awesome</span>
+                Templates
+            </a>
+<a class="flex items-center gap-3 text-on-surface-variant dark:text-secondary-fixed-dim px-4 py-3 hover:bg-secondary-container dark:hover:bg-on-secondary-fixed-variant rounded-xl transition-all duration-300 scale-95 active:scale-90 transition-transform cursor-pointer" href="#">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+                Assets
+            </a>
+<a class="flex items-center gap-3 text-on-surface-variant dark:text-secondary-fixed-dim px-4 py-3 hover:bg-secondary-container dark:hover:bg-on-secondary-fixed-variant rounded-xl transition-all duration-300 scale-95 active:scale-90 transition-transform cursor-pointer" href="#">
+<span class="material-symbols-outlined" data-icon="insights">insights</span>
+                Analytics
+            </a>
+<a class="flex items-center gap-3 text-on-surface-variant dark:text-secondary-fixed-dim px-4 py-3 hover:bg-secondary-container dark:hover:bg-on-secondary-fixed-variant rounded-xl transition-all duration-300 scale-95 active:scale-90 transition-transform cursor-pointer" href="#">
+<span class="material-symbols-outlined" data-icon="folder_special">folder_special</span>
+                Library
+            </a>
+</div>
+<div class="mt-auto">
+<button class="w-full bg-primary text-on-primary font-label-md text-label-md rounded-xl py-3 mb-6 shadow-sm hover:opacity-90 transition-opacity">
+                Create New Short
+            </button>
+<div class="flex flex-col gap-2 font-label-md text-label-md border-t border-outline-variant pt-4">
+<a class="flex items-center gap-3 text-on-surface-variant dark:text-secondary-fixed-dim px-4 py-3 hover:bg-secondary-container dark:hover:bg-on-secondary-fixed-variant rounded-xl transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="help_outline">help_outline</span>
+                    Support
+                </a>
+<a class="flex items-center gap-3 text-on-surface-variant dark:text-secondary-fixed-dim px-4 py-3 hover:bg-secondary-container dark:hover:bg-on-secondary-fixed-variant rounded-xl transition-all duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+                    Settings
+                </a>
+</div>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="ml-64 flex-1 flex flex-col min-h-screen">
+<!-- Header / Search -->
+<header class="px-margin-desktop py-10 max-w-container-max mx-auto w-full">
+<h1 class="font-display-lg text-display-lg text-on-surface mb-2">Template Library</h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant mb-8">Discover high-end templates curated for premium social commerce.</p>
+<div class="flex items-center gap-4">
+<div class="relative flex-1 max-w-2xl">
+<span class="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">search</span>
+<input class="w-full bg-surface-container-low border border-outline-variant rounded-full py-4 pl-12 pr-4 focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary font-body-md text-body-md text-on-surface placeholder:text-outline transition-colors" placeholder="Search templates, styles, or tags..." type="text"/>
+</div>
+<button class="flex items-center gap-2 bg-surface-container border border-outline-variant rounded-full px-6 py-4 font-label-md text-label-md text-on-surface hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined" data-icon="tune">tune</span>
+                    Filters
+                </button>
+</div>
+<!-- Category Pills -->
+<div class="flex gap-3 mt-8 overflow-x-auto hide-scrollbar pb-2">
+<button class="whitespace-nowrap px-6 py-2 rounded-full bg-primary text-on-primary font-label-md text-label-md shadow-sm">All Templates</button>
+<button class="whitespace-nowrap px-6 py-2 rounded-full bg-surface-container-low border border-outline-variant text-on-surface-variant font-label-md text-label-md hover:bg-surface-container transition-colors">Fashion Lookbook</button>
+<button class="whitespace-nowrap px-6 py-2 rounded-full bg-surface-container-low border border-outline-variant text-on-surface-variant font-label-md text-label-md hover:bg-surface-container transition-colors">Home Styling</button>
+<button class="whitespace-nowrap px-6 py-2 rounded-full bg-surface-container-low border border-outline-variant text-on-surface-variant font-label-md text-label-md hover:bg-surface-container transition-colors">Product Review</button>
+<button class="whitespace-nowrap px-6 py-2 rounded-full bg-surface-container-low border border-outline-variant text-on-surface-variant font-label-md text-label-md hover:bg-surface-container transition-colors">Behind the Scenes</button>
+<button class="whitespace-nowrap px-6 py-2 rounded-full bg-surface-container-low border border-outline-variant text-on-surface-variant font-label-md text-label-md hover:bg-surface-container transition-colors">Tutorial</button>
+</div>
+</header>
+<!-- Template Grid -->
+<section class="flex-1 px-margin-desktop pb-20 max-w-container-max mx-auto w-full">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-gutter">
+<!-- Card 1 -->
+<article class="bg-surface-bright rounded-2xl border border-outline-variant overflow-hidden soft-lift soft-lift-hover transition-all duration-300 group cursor-pointer flex flex-col">
+<div class="relative aspect-[9/16] overflow-hidden bg-surface-container-low">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="A vertical video preview showing a stylish woman in a chic, minimalist loft apartment trying on different modern autumn outfits. The aesthetic is high-end editorial, bright, with soft natural light coming from large windows. The color palette features warm neutrals, creams, and terracotta accents, perfectly aligning with a premium fashion lookbook style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBUJDGbhkrI5i_Ebe5tYvNJNPwC7Mj79p6rheCrc93DIFIHrVv832SvPXrXViHjBUTx8XiS9-bFzzWQcUoYFarBfRQOkp8p882C2LpfeKJT48BHp0E1T4AoktanDw5R8uVYC6ademMpu3hfSeWmQAJddOg4y-8kILdGpxSLkrMh9nDMdenzdlzjNSCF0HBHP1563quueMYBfYYxsJRiddP-hdiQHpArfIahj3TqSDj7i-GLrQV5F5Y_"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+<button class="w-14 h-14 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-primary shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+<span class="material-symbols-outlined text-2xl" data-icon="play_arrow">play_arrow</span>
+</button>
+</div>
+<div class="absolute top-4 left-4 flex gap-2">
+<span class="bg-surface/90 backdrop-blur-md px-3 py-1 rounded-full font-label-sm text-label-sm text-on-surface shadow-sm">0:15</span>
+</div>
+</div>
+<div class="p-6 flex-1 flex flex-col">
+<div class="flex items-center gap-2 mb-3">
+<span class="bg-primary-container/20 text-on-primary-container px-3 py-1 rounded-full font-label-sm text-label-sm">Fashion Lookbook</span>
+<span class="text-outline text-sm">•</span>
+<span class="text-on-surface-variant font-label-sm text-label-sm">3 Scenes</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-2">Autumn Essentials Try-on</h3>
+<p class="font-body-md text-body-md text-on-surface-variant flex-1">A fast-paced, rhythmic template perfect for showcasing seasonal wardrobe updates with dynamic text overlays.</p>
+</div>
+</article>
+<!-- Card 2 -->
+<article class="bg-surface-bright rounded-2xl border border-outline-variant overflow-hidden soft-lift soft-lift-hover transition-all duration-300 group cursor-pointer flex flex-col">
+<div class="relative aspect-[9/16] overflow-hidden bg-surface-container-low">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="A vertical video preview displaying a beautifully styled, modern living room corner. A person is arranging ceramic vases and dried botanicals on a sleek wooden console table. The lighting is soft and cinematic, highlighting the organic textures and the serene, warm linen and soft rose color palette of the room. The mood is calm and aspirational." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDePRdCNT8tXAnQhmBKn3ROR43HrEC3Kh862jpKUdZ6iezYC0FFN_3IAExPUtfIhStb_r3EjDm_uxAi3SiOAa1gzwLv_bzDtV7C4lvLKbRtrA1hoUebw8Sh7R1gPyznQso5Gk3ofD7wk1Wt8MmVkPlMzSoPV-WbDDjqCrUFGiFvAEWvLCBu2mbne-X0YFR7GFysnN3Q2hAHhRQcMDkhImxfBgw8mzKNgI728X0RUehFHsv0evo531l-"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+<button class="w-14 h-14 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-primary shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+<span class="material-symbols-outlined text-2xl" data-icon="play_arrow">play_arrow</span>
+</button>
+</div>
+<div class="absolute top-4 left-4 flex gap-2">
+<span class="bg-surface/90 backdrop-blur-md px-3 py-1 rounded-full font-label-sm text-label-sm text-on-surface shadow-sm">0:30</span>
+</div>
+</div>
+<div class="p-6 flex-1 flex flex-col">
+<div class="flex items-center gap-2 mb-3">
+<span class="bg-secondary-container text-on-secondary-container px-3 py-1 rounded-full font-label-sm text-label-sm">Home Styling</span>
+<span class="text-outline text-sm">•</span>
+<span class="text-on-surface-variant font-label-sm text-label-sm">5 Scenes</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-2">Serene Spaces</h3>
+<p class="font-body-md text-body-md text-on-surface-variant flex-1">Slow panning shots mixed with detailed close-ups, designed to evoke a sense of calm and tactile luxury for interior products.</p>
+</div>
+</article>
+<!-- Card 3 -->
+<article class="bg-surface-bright rounded-2xl border border-outline-variant overflow-hidden soft-lift soft-lift-hover transition-all duration-300 group cursor-pointer flex flex-col">
+<div class="relative aspect-[9/16] overflow-hidden bg-surface-container-low">
+<img class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="A vertical video preview showing a close-up, high-quality unboxing of a premium skincare product. The product sits on a minimalist, textured stone surface. The lighting is crisp and studio-quality, creating soft shadows that emphasize the premium packaging. The overall aesthetic is clean, professional, and slightly tactile, aligning with a high-end review style." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC8Aqpuv5mPy0ZYixH8jRAQ2yn10s-FMJX6vPP9pl3YWWvX1fG97LvTuFAV3X119ACET0gvI4GFg9qB2WEcmjGv-pUGL8zLdy0Tna5mxSJWWjwT7sCJ2jXCO-S--QRzlWpcsG4MzzyCr0897v03d_uidke1qwVDPca_kS7G_CWlyslE3tnDFIyEk-cqQlNljA3pUQtJR3nJqCheT3mc4-nHazT1wPRPMov3i-izS0EGZ0Gq3Wt3TiuA"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+<button class="w-14 h-14 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center text-primary shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all duration-300">
+<span class="material-symbols-outlined text-2xl" data-icon="play_arrow">play_arrow</span>
+</button>
+</div>
+<div class="absolute top-4 left-4 flex gap-2">
+<span class="bg-surface/90 backdrop-blur-md px-3 py-1 rounded-full font-label-sm text-label-sm text-on-surface shadow-sm">0:45</span>
+</div>
+</div>
+<div class="p-6 flex-1 flex flex-col">
+<div class="flex items-center gap-2 mb-3">
+<span class="bg-surface-variant text-on-surface-variant px-3 py-1 rounded-full font-label-sm text-label-sm">Review</span>
+<span class="text-outline text-sm">•</span>
+<span class="text-on-surface-variant font-label-sm text-label-sm">4 Scenes</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-2">Detailed Product Focus</h3>
+<p class="font-body-md text-body-md text-on-surface-variant flex-1">Clean, structured layout with lower-third text placeholders for highlighting key features and benefits.</p>
+</div>
+</article>
+</div>
+</section>
+<!-- Footer -->
+<footer class="mt-auto w-full py-12 border-t border-outline-variant dark:border-on-surface-variant bg-surface dark:bg-surface-dim">
+<div class="max-w-container-max mx-auto px-margin-desktop flex flex-col md:flex-row justify-between items-center gap-6">
+<p class="text-secondary dark:text-secondary-fixed-dim font-label-sm text-label-sm tracking-wider uppercase">© 2024 ShortsMaker Studio. All rights reserved.</p>
+<div class="flex gap-6 font-label-sm text-label-sm tracking-wider uppercase text-on-secondary-container dark:text-on-secondary-fixed-variant">
+<a class="opacity-100 hover:opacity-80 transition-opacity hover:text-primary dark:hover:text-primary-fixed-dim underline underline-offset-4" href="#">Terms of Service</a>
+<a class="opacity-100 hover:opacity-80 transition-opacity hover:text-primary dark:hover:text-primary-fixed-dim underline underline-offset-4" href="#">Privacy Policy</a>
+<a class="opacity-100 hover:opacity-80 transition-opacity hover:text-primary dark:hover:text-primary-fixed-dim underline underline-offset-4" href="#">Contact Us</a>
+<a class="opacity-100 hover:opacity-80 transition-opacity hover:text-primary dark:hover:text-primary-fixed-dim underline underline-offset-4" href="#">Press Kit</a>
+</div>
+</div>
+</footer>
+</main>
+</body></html>

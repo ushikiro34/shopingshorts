@@ -51,22 +51,33 @@ create table scripts (
   product_id uuid not null references products(id) on delete cascade,
   analysis_id uuid references review_analysis(id),
   target_persona text not null default '40-50대 여성',
-  tone text not null,                    -- 불편해결|우월감|보상|생활팁|사실형|생활형|실리적
+  tone text not null,                    -- app/script/formats.py의 SCRIPT_FORMATS 키 중 하나(4번 참고)
   version integer not null default 1,
   script_json jsonb not null,            -- 아래 "대본 JSON 스키마"
   approved boolean not null default false,
-  created_at timestamptz default now()
+  created_at timestamptz default now(),
+  hook_preview_image_path text,          -- 후킹 확인 단계에서 만든 씬0 스틸컷 경로
+  hook_preview_video_path text,          -- 후킹 확인 단계에서 만든 씬0 후킹 영상 경로
+  hook_preview_status text,              -- null|generating|done|failed
+  scene_preview_images jsonb not null default '{}'::jsonb
+  -- 후킹(씬0) 외 다른 씬들의 미리보기: {"<seq>": {"image_path":.., "status":"generating"|"done"|"failed"}}
 );
 
 -- [6][7][8] 미디어
 create table render_jobs (
   id uuid primary key default gen_random_uuid(),
   script_id uuid not null references scripts(id) on delete cascade,
-  status text not null default 'queued', -- queued|generating_images|generating_audio|assembling|done|failed
+  status text not null default 'queued', -- queued|generating_images|generating_video|generating_audio|assembling|done|failed
   output_path text,
   error_message text,
   created_at timestamptz default now(),
-  finished_at timestamptz
+  finished_at timestamptz,
+  base_video_path text,                  -- 자막 없는 합성본(크로스페이드+BGM까지 끝난 상태). 캡션 편집 재합성의 원본
+  scene_timeline jsonb,                  -- base_video_path 기준 씬별 절대 구간: [{seq, start_sec, end_sec}]
+  caption_overrides jsonb,               -- 씬별 캡션/후킹/상시CTA 위치·스타일 편집값. null이면 기본값. 아래 "4-1" 스키마
+  kind text not null default 'full',     -- full|hook_preview|hook_patch (6번 참고)
+  source_render_job_id uuid references render_jobs(id), -- hook_patch 전용: 어느 완료된 render_job을 고칠지
+  target_seq int                         -- kind='hook_preview'|'hook_patch' 전용: 대상 씬 seq. null=후킹(scenes[0])
 );
 
 -- [9] 썸네일
@@ -116,9 +127,14 @@ create table policy_alerts (
 ## 2. products.status 상태 머신
 
 ```
-discovered → scored → reviews_collected → analyzed → script_generated →
+discovered → scored → reviews_collected → analyzed → script_generated → prompt_review →
 script_approved → media_generated → thumbnail_generated → queued_for_upload → uploaded
 (실패 시 각 단계 대응 failed_*, 재시도는 직전 단계로 롤백)
+
+prompt_review: 대본 승인 직후 ~ "프롬프트 확인" 탭에서 씬별 스틸컷/후킹 영상을 확인·
+확정하기 전까지. 확정(POST /prompts/{script_id}/confirm)해야 script_approved로 넘어가
+실제 렌더가 큐잉되고 미디어제작 탭에 나타난다(Phase 7 — 확인 전에 미디어제작 탭에
+노출돼 비용이 이중지출되는 문제를 막기 위해 분리).
 ```
 
 ## 3. 후기 분석 JSON 스키마 (review_analysis.analysis_json)
@@ -175,17 +191,81 @@ Claude가 reviews_raw를 입력받아 생성. **원문을 그대로 옮기지 �
 }
 ```
 
-구조는 정확히 6단계: **공감 → 감정 → 문제제기 → 해결 → 결과 → 상품**. `scenes[].stage`는 그 씬이 이 6단계 중 어디에 해당하는지를 가리키며(대본작성 탭에서 구조 카드마다 해당 자막을 같이 보여주는 데 쓰인다), `scenes[].visual`은 그 씬에 어울리는 화면 연출을 짧게 적어 후보 이미지 중 실제로 쓰일 컷을 고르는 데 참고한다(`app/script/image_matcher.py`). CTA는 별도 단계가 아니라 `product` 단계의 마지막 문장에 자연스럽게 포함하되, **가격은 숫자로 언급하지 않고** "제품정보는 본문에 있어요, 확인해보세요" 처럼 "본문/더보기/설명란" 등 링크 확인을 유도하는 표현으로 마무리한다(v2.2, 가격 변동·최신가 확인 유도 목적). `solution`과 `product`를 분리한 이유는, 해결책을 먼저 방향성으로 제시하고 그다음 컷에서 "그게 바로 이 상품"으로 넘어가야 광고 티가 덜 나기 때문 — 둘을 합쳐서 한 문장에 몰아 써도 무방하나 필드 자체는 유지한다.
+**v2.4부터 구조는 형식(`tone`)마다 다르다.** 위 예시는 표준 6단계(공감 → 감정 → 문제제기 →
+해결 → 결과 → 상품) 형식이며, `tone` 값이 이 형식이 아닌 다른 형식이면 `structure`의 필드
+구성/개수, `scenes[].stage`로 쓸 수 있는 값, CTA가 들어가는 필드명이 달라진다. 실제 정의는
+`app/script/formats.py`의 `SCRIPT_FORMATS` 레지스트리가 유일한 소스다 — 이 문서에 형식마다
+전체 구조를 다시 나열하지 않는다(형식이 늘어날 때마다 문서가 낡는 것을 방지). 요약:
+- `structure`의 필드는 `SCRIPT_FORMATS[tone].stages`가 정의한 키와 정확히 일치해야 하며 모두
+  비어있지 않아야 한다.
+- `scenes[].stage`는 그 형식의 stage 키 목록 중 하나여야 한다(대본작성 탭에서 구조 카드마다
+  해당 자막을 같이 보여주는 데 쓰인다). `scenes`는 형식이 정의한 stage 순서대로 정렬한다.
+- CTA(가격 언급 없이 "본문/더보기/설명란" 등으로 유도하는 문구)는 별도 단계가 아니라 그
+  형식의 `cta_stage` 필드 마지막 문장에 자연스럽게 포함한다.
+- `tone`은 `SCRIPT_FORMATS`에 정의된 값 중 하나. 신규 대본 생성(대시보드/`/api/products/{id}/
+  generate-script`)은 `active_tone_choices()`가 반환하는 신규 형식만 선택지로 제공한다.
+  v2.4 이전 생성분의 구 7종 톤(불편해결/우월감/보상/생활팁/사실형/생활형/실리적)은
+  `legacy=True`로 레지스트리에 남아 있어 계속 렌더링/편집 가능하지만 신규 생성 선택지에는
+  노출되지 않는다.
+- `scenes[].visual`은 그 씬에 어울리는 화면 연출을 짧게 적어 후보 이미지 중 실제로 쓰일 컷을
+  고르는 데 참고한다(`app/script/image_matcher.py`) — 형식과 무관하게 공통.
 
 **고지문구(disclosure) 배치(v2.2)**: `PARTNERS_DISCLOSURE` 문구는 narration(음성으로 낭독되는 모든 텍스트: `structure.*`, `scenes[].narration`)에는 절대 포함하지 않는다. `youtube.description`의 맨 마지막 줄에만 정확히 그대로 넣는다. 영상 내 마지막 장면 시각적 오버레이(Phase 3, `disclosure` 필드 사용)는 이와 별개로 항상 표시되므로 음성으로 다시 읽을 필요가 없다.
 
-**`educational_note` (선택적, 카테고리 기반)**: `products.needs_education=true`인 상품만 채운다. "문제제기" 단계를 보강하는 1~2문장짜리 간단한 사실 설명이며, 별도 구조 단계가 아니라 problem 씬 직후에 삽입되는 부가 정보다. 자외선차단·살균·정수필터·유산균 등 "왜 필요한지"에 대한 배경지식이 설득력을 좌우하는 카테고리에 쓴다. 규칙:
+**`educational_note` (선택적, 카테고리 기반)**: `products.needs_education=true`인 상품만 채운다. 형식이 정의한 특정 단계(`SCRIPT_FORMATS[tone].educational_note_after_stage` — 표준 6단계 형식은 `problem`)를 보강하는 1~2문장짜리 간단한 사실 설명이며, 별도 구조 단계가 아니라 그 단계 씬 직후에 삽입되는 부가 정보다. 자외선차단·살균·정수필터·유산균 등 "왜 필요한지"에 대한 배경지식이 설득력을 좌우하는 카테고리에 쓴다. 규칙:
 - 일반적으로 널리 합의된 상식 수준의 사실만 사용 (예: "자외선은 피부 노화·화상을 유발할 수 있다"는 O, 특정 질병 진단·치료 효과를 암시하는 표현은 X)
 - 의학적 조언·진단처럼 들리는 표현 금지 ("~하면 안 걸립니다", "치료됩니다" 등)
 - 과장·확정적 인과 표현 대신 "~일 수 있어요", "~로 알려져 있어요" 같은 절제된 어투 사용
 - `needs_education=false`인 상품은 `included: false, text: ""`로 둔다
 
-제약: `scenes` 3~8개, 30~45초, `narration`은 reviews_raw와 8단어 이상 연속 일치 금지, `structure`의 6개 필드 모두 필수(비어있지 않음), `scenes[].stage`는 6개 필드 중 하나여야 함, `tone`은 7종 중 하나.
+제약: `scenes` 3~8개, 30~45초(형식과 무관하게 전역), `narration`은 reviews_raw와 8단어 이상 연속 일치 금지, `structure`는 형식이 정의한 필드 전부 필수(비어있지 않음), `scenes[].stage`는 그 형식의 stage 키 중 하나여야 함, `tone`은 `SCRIPT_FORMATS`에 정의된 값 중 하나.
+
+## 4-1. 캡션 오버라이드 JSON 스키마 (render_jobs.caption_overrides)
+
+미디어제작 탭의 캡션 편집기(씬별 자막/후킹/상시CTA 위치·스타일 편집, CapCut식 드래그
+에디터)가 저장하는 값이다. `scripts.script_json`은 건드리지 않는다 — 대본 내용과 "이 렌더를
+어떻게 보여줄지"는 별개 개념이기 때문.
+
+```json
+{
+  "2": {
+    "caption": {
+      "text": "이 필터 하나로 끝",
+      "x": 96, "y": 1500,
+      "font": "nanum_gothic",
+      "font_size": 60,
+      "bg_enabled": true,
+      "bg_color": "#000000",
+      "bg_opacity": 0.55
+    },
+    "sticky_cta": {
+      "text": "본문에서 확인",
+      "x": 200, "y": 1690,
+      "font": "nanum_gothic",
+      "font_size": 32,
+      "bg_enabled": false,
+      "bg_color": "#000000",
+      "bg_opacity": 0.0
+    }
+  }
+}
+```
+
+- 최상위 키는 `scenes[].seq`를 문자열로 표현한 것(JSON 객체 키는 항상 문자열). 그 아래 키는
+  `caption`(씬 하단 일반 자막) / `hook`(첫 씬 상단 후킹 헤드라인) / `sticky_cta`(중간
+  씬들의 상시 노출 CTA 배너) 중 편집기가 채운 것만 존재 — **고지문구(disclosure)는 법적
+  요건(`PARTNERS_DISCLOSURE`, 절대 규칙 3번)이라 편집 대상이 아니고 이 키에 절대 들어가지
+  않는다.**
+- `x`/`y`는 1080x1920 캔버스 기준 절대 픽셀 좌표(텍스트 블록 좌상단 기준). 씬/타입 조합이
+  이 객체에 없으면 그 요소는 `app/media/render.py`의 기존 기본 위치(하단 마진 + 가운데
+  정렬 등)로 렌더된다 — 하위호환을 위한 기본값이며, `caption_overrides`가 아예 `null`인
+  렌더(이 기능 이전에 만들어진 것 포함)는 지금과 완전히 동일하게 동작한다.
+- `text`가 빈 문자열이면 그 요소를 화면에서 아예 숨긴다(기존 `caption_text=""` 처리와 동일).
+- `font`는 `app/config.py`의 `FONT_REGISTRY` 키 중 하나만 허용한다.
+- `font_size`는 20~120px 범위의 정수만 허용(그 밖의 값/파싱 실패는 저장 시 제거되고 기본값으로
+  대체). 씬/타입 조합에 없으면 요소별 기존 기본 크기(일반 자막 60px, 마지막씬 CTA 자막 46px,
+  후킹 헤드라인 66px, 상시CTA 배너 32px)로 렌더된다 — 줄바꿈된 문구의 줄간격도 크기 비율에
+  맞춰 같이 조정된다.
 
 ## 5. API 엔드포인트
 

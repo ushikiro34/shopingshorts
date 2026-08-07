@@ -174,6 +174,10 @@ def test_generate_scene_image_includes_character_reference_when_given(monkeypatc
     assert parts[2]["inlineData"]["mimeType"] == "image/png"
     assert "얼굴·헤어스타일" in parts[0]["text"]
     assert "실패로 간주" in parts[0]["text"]  # 포즈/구도까지 베끼면 안 된다는 지시
+    # 회귀 테스트 — 후킹은 서양인으로 생성됐는데 이후 씬에서 동양인으로 바뀌는 등
+    # 인종이 씬마다 달라지는 문제(사용자 피드백)가 있어 인종/피부톤 유지 지시를 추가했다.
+    assert "인종" in parts[0]["text"]
+    assert "피부톤" in parts[0]["text"]
 
 
 def test_generate_scene_image_includes_character_reference_without_product_reference(monkeypatch):

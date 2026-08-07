@@ -10,6 +10,7 @@ from app.config import DEFAULT_HOLD_MINUTES
 from app.db import get_client
 from app.media.images import ImageFetchError, download_image
 from app.media.thumbnail import generate_thumbnail
+from app.script.formats import get_format
 from app.upload.publisher import PublishError, publish_video
 
 router = APIRouter(prefix="/api", tags=["upload"])
@@ -40,7 +41,10 @@ def generate_thumbnail_endpoint(render_job_id: str):
     script = _get_or_404(client, "scripts", job["script_id"], "대본을 찾을 수 없습니다.")
     product = _get_or_404(client, "products", script["product_id"], "상품을 찾을 수 없습니다.")
 
-    hook_text = script["script_json"]["structure"]["empathy"]
+    # "empathy"로 하드코딩돼 있었는데, 형식(tone)마다 첫 단계 키가 다를 수 있어(예:
+    # 기획천재발견형은 "hook", 썸쇼츠형은 "story_setup") 형식에서 실제 첫 단계 키를 조회한다.
+    fmt = get_format(script["script_json"].get("tone"))
+    hook_text = script["script_json"]["structure"][fmt.stage_keys[0]]
     image_bytes = None
     image_urls = product.get("image_urls") or []
     if image_urls:

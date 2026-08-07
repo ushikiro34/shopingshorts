@@ -18,6 +18,8 @@ import subprocess
 
 from PIL import ImageFont
 
+from app.config import DEFAULT_FONT_KEY, FONT_REGISTRY
+
 WIDTH = 1080
 HEIGHT = 1920
 FPS = 30
@@ -79,6 +81,13 @@ FONT_SEARCH_PATHS = [
 ]
 
 
+# 대본 구조(app/script/prompts.py) 중 아직 상품이 등장하면 안 되는 "문제 상황" 단계 —
+# 이 단계 씬은 상품 참고 이미지를 넘기지 않는다(app/media/worker.py의 build_scene_image).
+# render.py에 두는 이유: resolve_scene_text_elements()가 캡션 재합성(worker.py의 최초 렌더,
+# 캡션 편집기의 재편집 양쪽)에서 공유돼야 해서, worker.py에만 두면 순환 임포트가 생긴다.
+PRE_REVEAL_STAGES = {"empathy", "emotion", "problem"}
+
+
 class RenderError(RuntimeError):
     """ffmpeg/ffprobe 실행 실패를 감싸는 명확한 예외."""
 
@@ -91,6 +100,18 @@ def resolve_font_path() -> str:
         "한글 폰트를 찾을 수 없습니다. assets/fonts/에 폰트 파일을 추가하거나 "
         "FONT_SEARCH_PATHS에 시스템 폰트 경로를 등록하세요."
     )
+
+
+def resolve_font_path_for_key(font_key: str | None) -> str:
+    """캡션 편집기의 폰트 선택값(FONT_REGISTRY 키)을 실제 파일 경로로 바꾼다.
+
+    레지스트리에 없는 키이거나 파일이 실제로 없으면(예: 배포 환경에 아직 안 올라간 폰트)
+    resolve_font_path()의 기존 폴백 체인으로 넘어간다 — Railway 배포 안전장치를 그대로 둔다.
+    """
+    path = FONT_REGISTRY.get(font_key or DEFAULT_FONT_KEY)
+    if path and os.path.exists(path):
+        return path
+    return resolve_font_path()
 
 
 def pick_bgm_track(bgm_dir: str = "assets/bgm") -> str | None:
@@ -147,12 +168,21 @@ def build_text_block_filter(
     enable: str | None = None,
     fontcolor: str = "white",
     outline_width: int = DISCLOSURE_OUTLINE_WIDTH,
+    x: int | None = None,
+    y: int | None = None,
+    bg_enabled: bool = False,
+    bg_color: str = "black",
+    bg_opacity: float = 0.55,
 ) -> str:
     """여러 줄을 줄마다 별도 drawtext로 그리는 filtergraph 조각을 만든다.
 
-    배경 박스(drawbox) 없이 글자에 검정 외곽선만 둘러 가독성을 확보한다 — 반투명 박스가
-    화면을 답답하게 가린다는 피드백으로 없앴다(원래는 고지문구 전용이었는데, 상시노출
-    CTA 배너도 같은 스타일을 재사용한다).
+    기본은 배경 박스(drawbox) 없이 글자에 검정 외곽선만 둘러 가독성을 확보한다 — 반투명
+    박스가 화면을 답답하게 가린다는 피드백으로 없앴다(원래는 고지문구 전용이었는데, 상시노출
+    CTA 배너도 같은 스타일을 재사용한다). 캡션 편집기가 배경을 켜고 싶을 때만 bg_enabled로
+    켠다.
+
+    x/y를 넘기면(캡션 편집기의 절대 픽셀 오버라이드) 화면 하단 기준 자동 배치 대신 그
+    좌표에 그린다 — 넘기지 않으면 기존 bottom_margin+가운데정렬 계산을 그대로 쓴다(하위호환).
 
     ffmpeg drawtext에 개행문자(\\n)가 포함된 텍스트를 한 번에 넘기면, 줄바꿈 위치 계산은
     맞게 하면서도 개행문자 자체를 빈 네모(tofu) 글리프로 그려버리는 문제가 있다.
@@ -161,15 +191,20 @@ def build_text_block_filter(
     escaped_font = escape_path_for_filter(font_path)
     block_height = line_height * len(line_paths)
     enable_suffix = f":enable='{enable}'" if enable else ""
+    x_expr = str(x) if x is not None else "(w-text_w)/2"
 
     filters = []
+    if bg_enabled:
+        box_y = str(y) if y is not None else f"ih-{bottom_margin}-{block_height}"
+        filters.append(f"drawbox=x=0:y={box_y}:w=iw:h={block_height}:color={bg_color}@{bg_opacity}:t=fill{enable_suffix}")
+
     for i, path in enumerate(line_paths):
         escaped_text = escape_path_for_filter(path)
-        y = f"h-{bottom_margin}-{block_height}+{i * line_height}"
+        y_expr = f"{y}+{i * line_height}" if y is not None else f"h-{bottom_margin}-{block_height}+{i * line_height}"
         filters.append(
             f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor={fontcolor}:"
             f"bordercolor=black:borderw={outline_width}:"
-            f"fontsize={fontsize}:x=(w-text_w)/2:y={y}:text_shaping=0{enable_suffix}"
+            f"fontsize={fontsize}:x={x_expr}:y={y_expr}:text_shaping=0{enable_suffix}"
         )
     return ",".join(filters)
 
@@ -184,32 +219,48 @@ def build_animated_caption_filter(
     max_width_px: int = CAPTION_MAX_WIDTH,
     line_height: int = TEXT_LINE_HEIGHT,
     box_padding: int = TEXT_BOX_PADDING,
+    x: int | None = None,
+    y: int | None = None,
+    bg_color: str = "black",
+    bg_opacity: float = 0.55,
+    enable: str | None = None,
+    fontcolor: str = CAPTION_TEXT_COLOR,
 ) -> str:
     """자막 문장 전체를 씬 시작과 동시에 페이드인시켜 끝까지 그대로 보여준다.
 
     이전엔 단어가 하나씩 늘어나며 문장이 완성되어가는("노래방 자막") 방식이었는데, 실제로
     보니 그 완성되어가는 모습이 어색하다는 피드백을 받아 문장 전체를 한 번에 드러내는
     방식으로 바꿨다.
+
+    x/y를 넘기면(캡션 편집기의 절대 픽셀 오버라이드) 화면 하단 기준 자동 배치 대신 그
+    좌표(텍스트 블록 좌상단)에 그린다 — 넘기지 않으면 기존 bottom_margin+가운데정렬
+    계산을 그대로 쓴다(하위호환). enable을 넘기면 그 구간에서만 보이게 게이팅한다
+    (여러 씬의 캡션을 한 영상 위에 겹쳐 그릴 때, 즉 캡션 재합성 단계에서 필요). fontcolor를
+    넘기면(캡션 편집기의 글씨 색상 오버라이드) 기본 노란색 대신 그 색으로 그린다.
     """
     escaped_font = escape_path_for_filter(font_path)
     lines = wrap_text_lines(text, font_path, fontsize, max_width_px)
     box_height = line_height * len(lines) + box_padding * 2
-    box_top = f"ih-{bottom_margin}-{box_height}"
+    box_top = str(y) if y is not None else f"ih-{bottom_margin}-{box_height}"
+    x_expr = str(x) if x is not None else "(w-text_w)/2"
+    enable_suffix = f":enable='{enable}'" if enable else ""
 
-    filters = [f"drawbox=x=0:y={box_top}:w=iw:h={box_height}:color=black@0.55:t=fill"]
+    filters = [f"drawbox=x=0:y={box_top}:w=iw:h={box_height}:color={bg_color}@{bg_opacity}:t=fill{enable_suffix}"]
     # 씬 시작(t=0)부터 CAPTION_POP_FADE_SEC 동안 alpha가 0에서 1로 올라가고, 이후 씬이
     # 끝날 때까지 그대로 유지된다 — 뚝 나타나는 대신 살짝 페이드인되는 느낌만 남긴다.
     alpha = f"min(t/{CAPTION_POP_FADE_SEC},1)"
     for line_i, line in enumerate(lines):
         # drawtext에서는 (drawbox와 반대로) h가 이미 프레임 높이를 가리킨다 — ih를 쓰면 안 된다.
-        y = f"h-{bottom_margin}-{box_height}+{box_padding + line_i * line_height}"
+        y_expr = f"{y}+{box_padding + line_i * line_height}" if y is not None else (
+            f"h-{bottom_margin}-{box_height}+{box_padding + line_i * line_height}"
+        )
         path = os.path.join(work_dir, f"{basename}.caption.line{line_i}.txt")
         _write_text_file(line, path)
         escaped_text = escape_path_for_filter(path)
         filters.append(
-            f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor={CAPTION_TEXT_COLOR}:"
+            f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor={fontcolor}:"
             f"bordercolor={CAPTION_OUTLINE_COLOR}:borderw={CAPTION_OUTLINE_WIDTH}:alpha='{alpha}':"
-            f"fontsize={fontsize}:x=(w-text_w)/2:y={y}:text_shaping=0"
+            f"fontsize={fontsize}:x={x_expr}:y={y_expr}:text_shaping=0{enable_suffix}"
         )
     return ",".join(filters)
 
@@ -221,6 +272,15 @@ HOOK_TOP_MARGIN = 260
 HOOK_MAX_WIDTH = int(WIDTH * 0.86)
 HOOK_LINE_HEIGHT = HOOK_FONTSIZE + 14
 
+
+def _scaled_line_height(fontsize: int, base_fontsize: int, base_line_height: int) -> int:
+    """캡션 편집기에서 폰트 크기를 바꿔도 줄 간격이 글자 크기에 비례해 같이 늘어나게 한다.
+
+    기본 스타일별 줄간격은 전부 "폰트크기 + 고정 여백" 형태로 정해져 있었다(예: 일반 자막
+    60px+10, 상시CTA 32px+6) — 그 여백만 유지한 채 새 폰트크기에 맞춰 다시 계산한다.
+    """
+    return fontsize + (base_line_height - base_fontsize)
+
 # 상단 후킹 문구 바로 아래 작게 얹는 제품명 — 캡션 강조색(노란색)으로 헤드라인과
 # 구분되게 한다(3단 레이아웃 절충안: 상단 후킹+제품명, 중간 영상, 하단 자막/CTA).
 HOOK_PRODUCT_NAME_FONTSIZE = 34
@@ -228,7 +288,19 @@ HOOK_PRODUCT_NAME_GAP = 12
 
 
 def build_hook_text_filter(
-    text: str, font_path: str, work_dir: str, basename: str, product_name: str | None = None
+    text: str,
+    font_path: str,
+    work_dir: str,
+    basename: str,
+    product_name: str | None = None,
+    x: int | None = None,
+    y: int | None = None,
+    bg_enabled: bool = False,
+    bg_color: str = "black",
+    bg_opacity: float = 0.55,
+    enable: str | None = None,
+    fontsize: int | None = None,
+    fontcolor: str = "white",
 ) -> str:
     """첫 씬 상단에 처음부터(단어 등장 없이) 큼직하게 박아두는 후킹 문구(+제품명).
 
@@ -238,28 +310,49 @@ def build_hook_text_filter(
     product_name을 넘기면 후킹 문구 바로 아래 작게 브랜드/제품명을 한 줄 더 얹는다 —
     상단(후킹+제품명)/중간(영상)/하단(자막·CTA) 3단 레이아웃 절충안(사용자 피드백)의
     상단 파트. 첫 씬(문제 상황)에만 표시하고 이후 씬에는 반복하지 않는다.
+
+    x/y를 넘기면(캡션 편집기의 절대 픽셀 오버라이드) 상단 고정 배치 대신 그 좌표(헤드라인
+    첫 줄 좌상단)에 그린다 — 넘기지 않으면 기존 HOOK_TOP_MARGIN+가운데정렬을 그대로
+    쓴다(하위호환). bg_enabled를 켜면 배경 박스를 추가한다(기본은 지금처럼 배경 없음).
+    fontsize를 넘기면(캡션 편집기의 크기 오버라이드) 줄간격도 같은 비율로 같이 늘어난다
+    (제품명 줄 크기는 편집 대상이 아니라 그대로 HOOK_PRODUCT_NAME_FONTSIZE를 쓴다). fontcolor를
+    넘기면(캡션 편집기의 글씨 색상 오버라이드) 기본 흰색 대신 그 색으로 그린다(제품명 줄은
+    편집 대상이 아니라 계속 CAPTION_TEXT_COLOR 고정).
     """
     escaped_font = escape_path_for_filter(font_path)
-    lines = wrap_text_lines(text, font_path, HOOK_FONTSIZE, HOOK_MAX_WIDTH)
+    fontsize = fontsize or HOOK_FONTSIZE
+    line_height = _scaled_line_height(fontsize, HOOK_FONTSIZE, HOOK_LINE_HEIGHT)
+    lines = wrap_text_lines(text, font_path, fontsize, HOOK_MAX_WIDTH)
+    top = y if y is not None else HOOK_TOP_MARGIN
+    x_expr = str(x) if x is not None else "(w-text_w)/2"
+    enable_suffix = f":enable='{enable}'" if enable else ""
+    block_height = len(lines) * line_height + (
+        (HOOK_PRODUCT_NAME_GAP + HOOK_PRODUCT_NAME_FONTSIZE) if product_name else 0
+    )
+
     filters = []
+    if bg_enabled:
+        filters.append(f"drawbox=x=0:y={top}:w=iw:h={block_height}:color={bg_color}@{bg_opacity}:t=fill{enable_suffix}")
+
     for i, line in enumerate(lines):
         path = os.path.join(work_dir, f"{basename}.hook.line{i}.txt")
         _write_text_file(line, path)
         escaped_text = escape_path_for_filter(path)
-        y = HOOK_TOP_MARGIN + i * HOOK_LINE_HEIGHT
+        line_y = top + i * line_height
         filters.append(
-            f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor=white:"
-            f"bordercolor=black:borderw=6:fontsize={HOOK_FONTSIZE}:x=(w-text_w)/2:y={y}:text_shaping=0"
+            f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor={fontcolor}:"
+            f"bordercolor=black:borderw=6:fontsize={fontsize}:x={x_expr}:y={line_y}:text_shaping=0{enable_suffix}"
         )
 
     if product_name:
         path = os.path.join(work_dir, f"{basename}.hook_product.txt")
         _write_text_file(product_name, path)
         escaped_text = escape_path_for_filter(path)
-        y = HOOK_TOP_MARGIN + len(lines) * HOOK_LINE_HEIGHT + HOOK_PRODUCT_NAME_GAP
+        line_y = top + len(lines) * line_height + HOOK_PRODUCT_NAME_GAP
         filters.append(
             f"drawtext=fontfile='{escaped_font}':textfile='{escaped_text}':fontcolor={CAPTION_TEXT_COLOR}:"
-            f"bordercolor=black:borderw=4:fontsize={HOOK_PRODUCT_NAME_FONTSIZE}:x=(w-text_w)/2:y={y}:text_shaping=0"
+            f"bordercolor=black:borderw=4:fontsize={HOOK_PRODUCT_NAME_FONTSIZE}:x={x_expr}:y={line_y}:"
+            f"text_shaping=0{enable_suffix}"
         )
     return ",".join(filters)
 
@@ -489,6 +582,33 @@ def run_ffmpeg(args: list[str]) -> None:
         raise RenderError("ffmpeg 실행 파일을 찾을 수 없습니다.") from exc
 
 
+def probe_duration_sec(path: str) -> float:
+    """씬 클립 하나의 실제 길이(초)를 ffprobe로 잰다.
+
+    후킹만 다시 만드는 기능(worker.py의 process_hook_patch_job)에서 씬별 길이를
+    scene_timeline(jsonb, 크로스페이드 겹침이 섞인 절대 구간)에서 역산하지 않고 이미
+    존재하는 clip_*.mp4 파일에서 직접 재는 데 쓴다 — 역산은 반올림/겹침 오차가 생길 수
+    있어 더 위험하다고 판단했다.
+    """
+    result = subprocess.run(
+        [
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            path,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    duration_str = result.stdout.strip()
+    if result.returncode != 0 or not duration_str:
+        raise RenderError(f"클립 길이 측정 실패(ffprobe): {result.stderr[:300]}")
+    try:
+        return float(duration_str)
+    except ValueError as exc:
+        raise RenderError(f"클립 길이를 읽을 수 없습니다: {duration_str!r}") from exc
+
+
 def pad_audio_with_silence(audio_path: str, gap_sec: float, output_path: str) -> str:
     """오디오 끝에 무음을 이어붙인다 — 씬 사이 나레이션이 곧바로 이어져 부자연스럽던 문제를
     해결하기 위해, 각 씬 오디오 뒤에 짧은 무음 구간을 넣어 다음 씬으로 넘어가기 전 숨 고를
@@ -604,6 +724,43 @@ TRANSITION_DURATION_SEC = 0.4
 TRANSITION_STYLE = "fadeblack"
 
 
+def _cumulative_scene_windows(
+    durations: list[float], transition_dur: float = TRANSITION_DURATION_SEC
+) -> list[tuple[float, float]]:
+    """각 씬이 크로스페이드로 합쳐진 최종 영상에서 차지하는 절대 (시작, 끝) 초를 계산한다.
+
+    build_xfade_filter_complex의 xfade offset 계산과 compute_scene_windows(캡션 재합성용
+    씬별 타임라인)가 반드시 같은 숫자를 써야 자막이 실제 화면 전환과 어긋나지 않는다 — 두
+    곳에서 각자 계산하게 두면 한쪽만 고치는 실수로 타이밍이 드리프트되기 쉬워서, 이 함수
+    하나로 통일한다.
+    """
+    n = len(durations)
+    if n == 0:
+        return []
+    windows = [(0.0, durations[0])]
+    cumulative = durations[0]
+    for i in range(1, n):
+        start = max(cumulative - transition_dur, 0)
+        cumulative = cumulative + durations[i] - transition_dur
+        windows.append((start, cumulative))
+    return windows
+
+
+def compute_scene_windows(
+    durations: list[float], seqs: list[int], transition_dur: float = TRANSITION_DURATION_SEC
+) -> list[dict]:
+    """recomposite_captions가 각 씬의 텍스트를 언제 보여줄지 판단하는 절대 시간 구간(초)을 만든다.
+
+    concat_clips_with_transitions로 합쳐진 base 영상 기준 좌표계다 — durations/seqs 순서가
+    그 함수에 넘긴 클립 순서와 정확히 같아야 한다. render_jobs.scene_timeline에 그대로 저장된다.
+    """
+    windows = _cumulative_scene_windows(durations, transition_dur)
+    return [
+        {"seq": seq, "start_sec": round(start, 3), "end_sec": round(end, 3)}
+        for seq, (start, end) in zip(seqs, windows)
+    ]
+
+
 def build_xfade_filter_complex(
     durations: list[float], transition: str = TRANSITION_STYLE, transition_dur: float = TRANSITION_DURATION_SEC
 ) -> tuple[str, str, str]:
@@ -614,18 +771,17 @@ def build_xfade_filter_complex(
     (filter_complex 문자열, 최종 비디오 라벨, 최종 오디오 라벨).
     """
     n = len(durations)
+    windows = _cumulative_scene_windows(durations, transition_dur)
     parts = []
     v_label, a_label = "0:v", "0:a"
-    cumulative = durations[0]
     for i in range(1, n):
         next_v, next_a = f"{i}:v", f"{i}:a"
         out_v = "vout" if i == n - 1 else f"v{i}"
         out_a = "aout" if i == n - 1 else f"a{i}"
-        offset = max(cumulative - transition_dur, 0)
+        offset = windows[i][0]
         parts.append(f"[{v_label}][{next_v}]xfade=transition={transition}:duration={transition_dur}:offset={offset:.3f}[{out_v}]")
         parts.append(f"[{a_label}][{next_a}]acrossfade=d={transition_dur}[{out_a}]")
         v_label, a_label = out_v, out_a
-        cumulative = cumulative + durations[i] - transition_dur
     return ";".join(parts), v_label, a_label
 
 
@@ -678,6 +834,189 @@ def mix_bgm(video_path: str, bgm_path: str | None, output_path: str) -> str:
             "-filter_complex", filter_complex,
             "-map", "0:v", "-map", "[aout]",
             "-c:v", "copy", "-c:a", "aac", "-shortest",
+            output_path,
+        ]
+    )
+    return output_path
+
+
+def resolve_scene_text_elements(
+    scenes: list[dict], pre_reveal_stages: frozenset[str] = PRE_REVEAL_STAGES
+) -> dict[int, dict]:
+    """씬마다 caption/hook/sticky_cta 중 어떤 텍스트 요소가 있고 기본 문구가 뭔지 정한다.
+
+    render_script()의 최초 렌더와 recomposite_captions()의 재편집이 이 로직을 공유해야
+    "이 씬엔 원래 무슨 텍스트가 있어야 하는지"가 두 곳에서 어긋나지 않는다(예전엔
+    app/media/worker.py의 render_script 루프 안에 이 분기가 있었다).
+
+    pre_reveal_stages는 대본 형식(app/script/formats.py의 ScriptFormat)마다 다를 수 있어
+    호출부가 넘겨준다 — 기본값은 표준 6단계 형식과 동일해 형식을 신경 쓰지 않는 기존
+    호출부/테스트는 그대로 동작한다(하위호환). render.py는 app.script에 의존하지 않는다.
+
+    반환값: {seq: {"is_first", "is_last", "texts": {"hook"|"caption"|"sticky_cta": 기본문구}}}
+    고지문구는 여기 포함하지 않는다 — 편집 대상이 아니라 항상 별도로 처리된다.
+    """
+    if not scenes:
+        return {}
+    first_seq = scenes[0]["seq"]
+    last_seq = scenes[-1]["seq"]
+    last_caption = scenes[-1]["caption"]
+
+    result: dict[int, dict] = {}
+    for scene in scenes:
+        seq = scene["seq"]
+        is_first = seq == first_seq
+        is_last = seq == last_seq
+        is_pre_reveal = scene.get("stage") in pre_reveal_stages
+
+        texts: dict[str, str] = {}
+        if is_first:
+            texts["hook"] = scene["caption"]
+        else:
+            texts["caption"] = scene["caption"]
+        # 상단(후킹+제품명)/중간(영상)/하단(자막+상시CTA) 3단 레이아웃 절충안(사용자 피드백).
+        # 상시 CTA 배너는 상품이 아직 등장하지 않는 pre-reveal 단계와 이미 자체 CTA
+        # 자막인 마지막 씬을 제외한 나머지 씬에만 보여준다.
+        if not is_first and not is_last and not is_pre_reveal:
+            texts["sticky_cta"] = last_caption
+
+        result[seq] = {"is_first": is_first, "is_last": is_last, "texts": texts}
+    return result
+
+
+def recomposite_captions(
+    base_video_path: str,
+    scene_timeline: list[dict],
+    scenes: list[dict],
+    disclosure_text: str,
+    font_path: str,
+    work_dir: str,
+    output_path: str,
+    overrides: dict | None = None,
+    pre_reveal_stages: frozenset[str] | None = None,
+) -> str:
+    """자막 없는 base_video_path 위에 씬별 텍스트를 한 번의 ffmpeg 패스로 입힌다.
+
+    최초 렌더(overrides=None)와 캡션 편집기의 재편집(overrides=caption_overrides) 양쪽에서
+    쓰는 단일 진입점이다 — 재편집 시 Gemini/Veo/TTS를 다시 부를 필요 없이 이 함수 하나만
+    다시 돌리면 된다. overrides에 없는 씬/요소는 지금까지의 기본 위치/스타일(하단 마진+
+    가운데정렬 등)로 그린다(하위호환).
+
+    pre_reveal_stages를 넘기지 않으면(None) resolve_scene_text_elements()의 기본값(표준
+    6단계 형식)을 그대로 쓴다 — 형식별 pre-reveal 판단이 필요한 호출부(worker.py,
+    캡션 편집기)가 script_json의 tone으로 조회한 값을 넘긴다.
+
+    각 씬의 텍스트는 scene_timeline의 해당 구간에서만 보이도록 enable='between(t,start,end)'
+    로 게이팅한다 — 고지문구가 이미 쓰던 방식(build_text_block_filter의 enable)을 모든
+    텍스트 요소로 확장한 것.
+    """
+    overrides = overrides or {}
+    elements_by_seq = (
+        resolve_scene_text_elements(scenes, pre_reveal_stages)
+        if pre_reveal_stages is not None
+        else resolve_scene_text_elements(scenes)
+    )
+    window_by_seq = {w["seq"]: w for w in scene_timeline}
+
+    blocks = []
+    for seq, info in elements_by_seq.items():
+        window = window_by_seq.get(seq)
+        if window is None:
+            continue
+        enable_expr = f"between(t,{window['start_sec']},{window['end_sec']})"
+        seq_overrides = overrides.get(str(seq)) or {}
+        basename = f"scene{seq}"
+
+        hook_default = info["texts"].get("hook")
+        if hook_default is not None:
+            override = seq_overrides.get("hook") or {}
+            text = override.get("text", hook_default)
+            if text:
+                hook_font = resolve_font_path_for_key(override["font"]) if "font" in override else font_path
+                blocks.append(
+                    build_hook_text_filter(
+                        text, hook_font, work_dir, basename,
+                        x=override.get("x"), y=override.get("y"),
+                        bg_enabled=override.get("bg_enabled", False),
+                        bg_color=override.get("bg_color", "black"),
+                        bg_opacity=override.get("bg_opacity", 0.55),
+                        fontsize=override.get("font_size"),
+                        fontcolor=override.get("text_color", "white"),
+                        enable=enable_expr,
+                    )
+                )
+
+        caption_default = info["texts"].get("caption")
+        if caption_default is not None:
+            override = seq_overrides.get("caption") or {}
+            text = override.get("text", caption_default)
+            if text:
+                caption_font = resolve_font_path_for_key(override["font"]) if "font" in override else font_path
+                is_last = info["is_last"]
+                base_fontsize = CTA_CAPTION_FONTSIZE if is_last else CAPTION_FONTSIZE
+                base_line_height = CTA_CAPTION_LINE_HEIGHT if is_last else TEXT_LINE_HEIGHT
+                fontsize = override.get("font_size", base_fontsize)
+                blocks.append(
+                    build_animated_caption_filter(
+                        text, caption_font, work_dir, basename,
+                        fontsize=fontsize,
+                        bottom_margin=CTA_CAPTION_BOTTOM_MARGIN if is_last else CAPTION_BOTTOM_MARGIN,
+                        line_height=_scaled_line_height(fontsize, base_fontsize, base_line_height),
+                        x=override.get("x"), y=override.get("y"),
+                        bg_color=override.get("bg_color", "black"),
+                        bg_opacity=override.get("bg_opacity", 0.55),
+                        fontcolor=override.get("text_color", CAPTION_TEXT_COLOR),
+                        enable=enable_expr,
+                    )
+                )
+
+        sticky_default = info["texts"].get("sticky_cta")
+        if sticky_default is not None:
+            override = seq_overrides.get("sticky_cta") or {}
+            text = override.get("text", sticky_default)
+            if text:
+                sticky_font = resolve_font_path_for_key(override["font"]) if "font" in override else font_path
+                fontsize = override.get("font_size", STICKY_CTA_FONTSIZE)
+                line_height = _scaled_line_height(fontsize, STICKY_CTA_FONTSIZE, STICKY_CTA_LINE_HEIGHT)
+                sticky_paths = _write_lines(
+                    text, work_dir, f"{basename}.sticky_cta", sticky_font, fontsize, STICKY_CTA_MAX_WIDTH
+                )
+                blocks.append(
+                    build_text_block_filter(
+                        sticky_paths, sticky_font,
+                        bottom_margin=STICKY_CTA_BOTTOM_MARGIN, fontsize=fontsize,
+                        line_height=line_height, fontcolor=override.get("text_color", CAPTION_TEXT_COLOR),
+                        outline_width=STICKY_CTA_OUTLINE_WIDTH,
+                        x=override.get("x"), y=override.get("y"),
+                        bg_enabled=override.get("bg_enabled", False),
+                        bg_color=override.get("bg_color", "black"),
+                        bg_opacity=override.get("bg_opacity", 0.55),
+                        enable=enable_expr,
+                    )
+                )
+
+    # 고지문구 — 편집 대상이 아니라 항상 마지막 구간 기준으로 하드코딩 스타일 그대로 표시한다.
+    total_end = scene_timeline[-1]["end_sec"] if scene_timeline else 0.0
+    disclosure_paths = _write_lines(
+        disclosure_text, work_dir, "final.disclosure", font_path, DISCLOSURE_FONTSIZE, DISCLOSURE_MAX_WIDTH
+    )
+    disclosure_enable = f"gte(t,{max(total_end - DISCLOSURE_OVERLAY_SEC, 0)})"
+    blocks.append(
+        build_text_block_filter(
+            disclosure_paths, font_path,
+            bottom_margin=DISCLOSURE_BOTTOM_MARGIN, fontsize=DISCLOSURE_FONTSIZE,
+            line_height=DISCLOSURE_LINE_HEIGHT, enable=disclosure_enable,
+        )
+    )
+
+    filter_complex = f"[0:v]{','.join(blocks)},format=yuv420p[outv]"
+    run_ffmpeg(
+        [
+            "-i", base_video_path,
+            "-filter_complex", filter_complex,
+            "-map", "[outv]", "-map", "0:a",
+            *VIDEO_ENCODE_ARGS, "-pix_fmt", "yuv420p", "-color_range", "tv", "-r", str(FPS),
+            "-c:a", "copy",
             output_path,
         ]
     )

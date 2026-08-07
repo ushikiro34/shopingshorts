@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+
+<html lang="ko"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ShortsMaker - 쇼핑 쇼츠, 일상이 화보가 되는 순간</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600&amp;family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary-container": "#cc7e6b",
+                        "on-secondary-container": "#696159",
+                        "secondary-fixed-dim": "#d0c5bb",
+                        "on-primary-fixed-variant": "#723526",
+                        "on-secondary-fixed-variant": "#4d463e",
+                        "primary-fixed-dim": "#ffb4a2",
+                        "on-tertiary-fixed-variant": "#474747",
+                        "secondary-container": "#e9ded4",
+                        "outline": "#86736e",
+                        "inverse-on-surface": "#f2f0ee",
+                        "tertiary-container": "#939292",
+                        "on-tertiary": "#ffffff",
+                        "inverse-primary": "#ffb4a2",
+                        "inverse-surface": "#30302f",
+                        "outline-variant": "#d9c1bc",
+                        "on-surface": "#1b1c1b",
+                        "surface-container-lowest": "#ffffff",
+                        "error": "#ba1a1a",
+                        "on-background": "#1b1c1b",
+                        "surface-bright": "#fbf9f7",
+                        "primary-fixed": "#ffdad2",
+                        "on-error": "#ffffff",
+                        "on-primary-container": "#4e1a0e",
+                        "secondary": "#655d55",
+                        "tertiary": "#5f5e5e",
+                        "surface-container": "#efedec",
+                        "on-secondary-fixed": "#201b15",
+                        "on-secondary": "#ffffff",
+                        "background": "#fbf9f7",
+                        "surface-variant": "#e4e2e0",
+                        "on-tertiary-container": "#2b2b2b",
+                        "on-surface-variant": "#53433f",
+                        "surface-container-highest": "#e4e2e0",
+                        "secondary-fixed": "#ece0d7",
+                        "surface": "#fbf9f7",
+                        "on-primary-fixed": "#3a0b02",
+                        "on-error-container": "#93000a",
+                        "tertiary-fixed-dim": "#c8c6c6",
+                        "on-tertiary-fixed": "#1b1c1c",
+                        "surface-dim": "#dbdad8",
+                        "surface-container-low": "#f5f3f1",
+                        "primary": "#8e4c3b",
+                        "surface-tint": "#8e4c3b",
+                        "error-container": "#ffdad6",
+                        "tertiary-fixed": "#e4e2e1",
+                        "surface-container-high": "#eae8e6",
+                        "on-primary": "#ffffff"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "margin-mobile": "20px",
+                        "gutter": "24px",
+                        "unit": "4px",
+                        "container-max": "1280px",
+                        "margin-desktop": "48px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Hanken Grotesk"],
+                        "headline-lg": ["Newsreader"],
+                        "body-lg": ["Hanken Grotesk"],
+                        "display-lg": ["Newsreader"],
+                        "headline-md": ["Newsreader"],
+                        "label-sm": ["Hanken Grotesk"],
+                        "headline-lg-mobile": ["Newsreader"],
+                        "label-md": ["Hanken Grotesk"]
+                    },
+                    "fontSize": {
+                        "body-md": ["16px", { "lineHeight": "24px", "fontWeight": "400" }],
+                        "headline-lg": ["32px", { "lineHeight": "40px", "fontWeight": "500" }],
+                        "body-lg": ["18px", { "lineHeight": "28px", "fontWeight": "400" }],
+                        "display-lg": ["48px", { "lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "600" }],
+                        "headline-md": ["24px", { "lineHeight": "32px", "fontWeight": "500" }],
+                        "label-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500" }],
+                        "headline-lg-mobile": ["28px", { "lineHeight": "36px", "fontWeight": "500" }],
+                        "label-md": ["14px", { "lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "600" }]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .soft-lift {
+            box-shadow: 0 10px 24px -4px rgba(142, 76, 59, 0.08), 0 4px 8px -2px rgba(142, 76, 59, 0.04);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background antialiased min-h-screen flex flex-col">
+<!-- TopNavBar (JSON Output) -->
+<header class="bg-surface dark:bg-surface-dim border-b border-outline-variant dark:border-on-surface-variant w-full top-0 z-50 sticky transition-all duration-300">
+<div class="flex justify-between items-center w-full px-margin-desktop py-4 max-w-container-max mx-auto">
+<div class="flex items-center gap-8">
+<a class="text-headline-md font-headline-md text-primary dark:text-primary-fixed-dim italic" href="#">
+                    ShortsMaker
+                </a>
+</div>
+<div class="flex items-center gap-6">
+<button class="text-on-surface-variant dark:text-secondary-fixed-dim hover:text-primary dark:hover:text-primary-fixed-dim transition-colors duration-200 cursor-pointer transition-opacity active:opacity-70 flex items-center justify-center p-2 rounded-full hover:bg-surface-variant/50">
+<span class="material-symbols-outlined" data-icon="notifications" style="font-variation-settings: 'FILL' 0;">notifications</span>
+</button>
+<button class="text-on-surface-variant dark:text-secondary-fixed-dim hover:text-primary dark:hover:text-primary-fixed-dim transition-colors duration-200 cursor-pointer transition-opacity active:opacity-70 flex items-center justify-center p-2 rounded-full hover:bg-surface-variant/50">
+<span class="material-symbols-outlined" data-icon="settings" style="font-variation-settings: 'FILL' 0;">settings</span>
+</button>
+<img alt="User profile" class="w-10 h-10 rounded-full object-cover border border-outline-variant" data-alt="A small circular user profile portrait of a woman in her 30s. Professional lighting, neutral beige background, subtle smile. Modern editorial style, high quality lifestyle photography." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwdQlehosiTETn5NfBffBCu_ZjQeQzRnn5kd9h31LTKSWWXQRUinhPi8QonT31nLn4J0gwaohJAwmXwvYY9w3PEC99S69AbFepK_HicFoyIIfTkO90CCzU89Ms6iD9oiHTiPnrJIdpvTeipBxjnkI3A6Q2LFMlvzfvoBRD0JZcJma02WNmGkhSUkux9zGXjb1cBOMfcr8QQdCVF9CkGIfTH8UrUhBTZrnBh_0BQXNVwi6MzWQYonCW"/>
+</div>
+</div>
+</header>
+<main class="flex-grow">
+<!-- Hero Section -->
+<section class="w-full max-w-container-max mx-auto px-margin-desktop py-24 md:py-32 flex flex-col md:flex-row items-center gap-12 md:gap-24 relative overflow-hidden">
+<div class="flex-1 flex flex-col gap-6 md:gap-8 z-10">
+<h1 class="font-display-lg text-display-lg text-on-surface leading-tight">
+                    쇼핑 쇼츠, <br/>일상이 화보가 되는 순간
+                </h1>
+<p class="font-body-lg text-body-lg text-on-surface-variant max-w-lg">
+                    Transform your products into captivating lifestyle narratives. ShortsMaker empowers creators to design high-end, editorial video content effortlessly, merging commerce with aesthetic storytelling.
+                </p>
+<div class="flex items-center gap-4 pt-4">
+<button class="bg-primary text-on-primary font-label-md text-label-md px-8 py-4 rounded-xl shadow-[inset_0_-2px_4px_rgba(0,0,0,0.1)] hover:bg-primary-container hover:text-on-primary-container transition-all active:scale-95 duration-200">
+                        Start Creating
+                    </button>
+<button class="bg-surface text-on-surface border border-outline-variant font-label-md text-label-md px-8 py-4 rounded-xl hover:bg-surface-variant transition-all active:scale-95 duration-200">
+                        View Gallery
+                    </button>
+</div>
+</div>
+<div class="flex-1 relative w-full aspect-[4/5] md:aspect-auto md:h-[600px] rounded-2xl overflow-hidden soft-lift z-10">
+<img alt="Editorial lifestyle video creation" class="w-full h-full object-cover" data-alt="A vertical editorial lifestyle shot of an elegant woman in a beige minimalist living room holding a ceramic vase. Soft natural light filtering through sheer curtains. Cinematic, warm tone, high-end fashion magazine aesthetic. A floating UI element suggests a video editing interface." src="https://lh3.googleusercontent.com/aida-public/AB6AXuANJHIGmfPgb6_TX15P75CgsTUcIcy5BlMgg9LZ_cH1d1OKnFF-0aaMZ_u3KWgnqymQsObPbnX_rWq8KO_s5YNwCu7J_PB7eX_xyoMsgnLIKEhEcp4DmX8FwP3kxM2tu6xUOV959NuPDKlhmREMehF9x0DpmSlMt5edeplbedMD_HyngR6-NGDoGeatmh_ofEwPjn2w-FQBSlVC1UGE7egjLH7nePJFG2FKobKTow8jFPjJqyDCWhTA"/>
+<!-- Floating Elements Simulation -->
+<div class="absolute bottom-8 left-8 right-8 bg-surface-container-lowest/90 backdrop-blur-md border border-outline-variant p-4 rounded-xl flex items-center gap-4">
+<div class="w-12 h-12 bg-primary-container rounded-lg flex items-center justify-center text-on-primary-container">
+<span class="material-symbols-outlined">auto_awesome</span>
+</div>
+<div>
+<p class="font-label-md text-label-md text-on-surface">AI Editing applied</p>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Cinematic Warm LUT</p>
+</div>
+</div>
+</div>
+<!-- Decorative Background Element -->
+<div class="absolute -right-[20%] top-[10%] w-[60vw] h-[60vw] rounded-full bg-secondary-container/30 blur-[120px] z-0 pointer-events-none"></div>
+</section>
+<!-- Features Bento Grid -->
+<section class="w-full bg-surface-container-low border-t border-outline-variant py-24">
+<div class="max-w-container-max mx-auto px-margin-desktop">
+<div class="mb-16 max-w-2xl">
+<h2 class="font-headline-lg text-headline-lg text-on-surface mb-4">Curated Tools for Creators</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Elevate your product presentation without the technical overhead. Our suite is designed for seamless, aesthetic creation.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-12 gap-gutter auto-rows-[320px]">
+<!-- Feature 1: AI Auto-Editing (Large) -->
+<div class="col-span-1 md:col-span-8 bg-surface-container-lowest rounded-2xl border border-outline-variant overflow-hidden flex flex-col md:flex-row relative group soft-lift transition-transform duration-300 hover:-translate-y-1">
+<div class="p-8 flex-1 flex flex-col justify-center z-10">
+<div class="w-10 h-10 bg-secondary-container rounded-full flex items-center justify-center mb-6 text-on-secondary-container">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">movie_edit</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-3">AI Auto-Editing</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Automatically stitch, color-grade, and pace your clips to match the rhythm of your selected ambient track. Achieving an editorial look has never been simpler.</p>
+</div>
+<div class="flex-1 relative bg-surface-variant overflow-hidden h-64 md:h-full">
+<img alt="Video timeline interface" class="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500" data-alt="A close up of a digital video timeline interface displaying clips of coffee being poured and stylish home goods. Soft cream and terracotta UI elements on a warm off-white background. Modern, clean, tactile design." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDtJu7auiV0SSP4v8BujQjZcAEo5uKD4j-q2jQbFj1twO_j-cftxE8NH9NqDA52ANbskNXrsGbZzZ_b6MuUjl9I2BiHzUe5Z02muHXYwGD9-HqLhSYLu0BW3Ap-sGhItQPcm0qU7SluKv4Nr0IbFkXC8dNPUhf00Z7R7JPoSwZE17169u8ATui0KohxclC0sU1jlCVLmrbDCfrcuppwHqf2llbwpbWF1LRXzI9gmh8FSZO4HCbhKTBZ"/>
+</div>
+</div>
+<!-- Feature 2: Shopping Tag Integration (Small) -->
+<div class="col-span-1 md:col-span-4 bg-surface-container-lowest rounded-2xl border border-outline-variant p-8 flex flex-col relative soft-lift transition-transform duration-300 hover:-translate-y-1 overflow-hidden">
+<div class="w-10 h-10 bg-primary-container rounded-full flex items-center justify-center mb-6 text-on-primary-container relative z-10">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">sell</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-3 relative z-10">Shopping Tags</h3>
+<p class="font-body-md text-body-md text-on-surface-variant relative z-10">Seamlessly integrate product links directly into your aesthetic shorts, turning viewers into customers instantly.</p>
+<!-- Decorative element -->
+<div class="absolute bottom-6 right-6 flex flex-col gap-2 opacity-60">
+<div class="bg-primary-fixed-dim px-4 py-2 rounded-full font-label-sm text-label-sm text-on-primary-fixed-variant flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-on-primary-fixed-variant"></span>
+                                Ceramic Mug - $24
+                             </div>
+<div class="bg-secondary-container px-4 py-2 rounded-full font-label-sm text-label-sm text-on-secondary-container flex items-center gap-2 self-end">
+<span class="w-2 h-2 rounded-full bg-on-secondary-container"></span>
+                                Linen Throw - $89
+                             </div>
+</div>
+</div>
+<!-- Feature 3: Analytics (Small) -->
+<div class="col-span-1 md:col-span-4 bg-surface-container-lowest rounded-2xl border border-outline-variant p-8 flex flex-col relative soft-lift transition-transform duration-300 hover:-translate-y-1">
+<div class="w-10 h-10 bg-tertiary-container rounded-full flex items-center justify-center mb-6 text-on-tertiary-container">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">monitoring</span>
+</div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-3">Refined Analytics</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">Understand your audience with beautifully visualized metrics that track engagement and conversion without the clutter.</p>
+</div>
+<!-- Feature 4: Premium Templates (Large) -->
+<div class="col-span-1 md:col-span-8 bg-surface-container-lowest rounded-2xl border border-outline-variant overflow-hidden flex flex-col relative group soft-lift transition-transform duration-300 hover:-translate-y-1">
+<div class="absolute inset-0 z-0">
+<img alt="Templates background" class="w-full h-full object-cover opacity-30" data-alt="A subtle, muted background image showing various elegant UI template layouts floating gently. Soft warm light, paper-like texture, minimalist aesthetic with neutral beige and taupe colors." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBXRnpR2e6MSY2SvEg9mCcmxL0Blkn6eAvyEgZ3QEtHEKiUG7noyZrrYE0_4N3AwVIzzMh7jFBB7WW50bJWeU9tmUA3WdL9oRDvQptqwmjZK78S5LuXixjLX8wxZIB4P9qevBF7AYJESetOdx7q8KNuGIjuEZBQ8YxBDbVKQIytLDiaukXRI9Y2Eg4T3-Evyh_WzKBpPOyGr5G10zYoDyLY46v7wtg4FXJRRPRXuSLpbalQ1zbxkAX7"/>
+</div>
+<div class="p-8 flex flex-col h-full justify-between z-10 relative">
+<div class="w-10 h-10 bg-surface-variant rounded-full flex items-center justify-center mb-6 text-on-surface-variant">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">layers</span>
+</div>
+<div>
+<h3 class="font-headline-md text-headline-md text-on-surface mb-3">Premium Templates</h3>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-md">Start with meticulously crafted structures designed by industry professionals. Perfect for fashion lookbooks, home tours, and product unboxings.</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer (JSON Output) -->
+<footer class="bg-surface dark:bg-surface-dim border-t border-outline-variant dark:border-on-surface-variant w-full py-12">
+<div class="max-w-container-max mx-auto px-margin-desktop flex flex-col md:flex-row justify-between items-center gap-6">
+<div class="font-headline-md text-primary italic">
+                ShortsMaker
+            </div>
+<nav class="flex flex-wrap justify-center gap-x-8 gap-y-4">
+<a class="font-label-sm text-label-sm tracking-wider uppercase text-on-secondary-container dark:text-on-secondary-fixed-variant hover:text-primary dark:hover:text-primary-fixed-dim underline-offset-4 hover:underline opacity-100 hover:opacity-80 transition-opacity" href="#">Terms of Service</a>
+<a class="font-label-sm text-label-sm tracking-wider uppercase text-on-secondary-container dark:text-on-secondary-fixed-variant hover:text-primary dark:hover:text-primary-fixed-dim underline-offset-4 hover:underline opacity-100 hover:opacity-80 transition-opacity" href="#">Privacy Policy</a>
+<a class="font-label-sm text-label-sm tracking-wider uppercase text-on-secondary-container dark:text-on-secondary-fixed-variant hover:text-primary dark:hover:text-primary-fixed-dim underline-offset-4 hover:underline opacity-100 hover:opacity-80 transition-opacity" href="#">Contact Us</a>
+<a class="font-label-sm text-label-sm tracking-wider uppercase text-on-secondary-container dark:text-on-secondary-fixed-variant hover:text-primary dark:hover:text-primary-fixed-dim underline-offset-4 hover:underline opacity-100 hover:opacity-80 transition-opacity" href="#">Press Kit</a>
+</nav>
+<div class="font-label-sm text-label-sm tracking-wider uppercase text-secondary dark:text-secondary-fixed-dim">
+                © 2024 ShortsMaker Studio. All rights reserved.
+            </div>
+</div>
+</footer>
+</body></html>

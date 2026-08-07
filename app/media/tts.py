@@ -32,6 +32,36 @@ from app.config import (
 ELEVENLABS_BASE_URL = "https://api.elevenlabs.io/v1/text-to-speech"
 ELEVENLABS_MODEL_ID = "eleven_multilingual_v2"
 
+# stability를 낮추고 style을 살짝 줘서 억양 기복이 있는 더 자연스러운 낭독 톤으로
+# 조정했다(기존 stability=0.5/style 없음은 다소 단조롭게 들렸다). voice_style을 넘기지
+# 않는 모든 기존 호출부(하위호환)는 이 기본값을 그대로 쓴다.
+DEFAULT_ELEVENLABS_VOICE_SETTINGS = {
+    "stability": 0.45,
+    "similarity_boost": 0.8,
+    "style": 0.35,
+    "use_speaker_boost": True,
+}
+
+# 참고용 Gemini Gem 사례(사용자 공유) — 후킹/문제제기 구간은 낮고 진정성 있게, 해결
+# 이후부터는 쾌감있고 청량한 톤으로 반전시키라는 성우 디렉션을 봤다. 우리도 같은
+# 아이디어를 씬 단위로 적용한다 — 이미 갖고 있는 형식별 pre_reveal_stages 경계(아직
+# 상품이 등장하면 안 되는 구간)를 그대로 재사용해서, 그 경계 이전/이후로 보이스를
+# 나눈다(app/script/formats.py의 ScriptFormat.pre_reveal_stages).
+VOICE_STYLE_PRESETS = {
+    "pre_reveal": {
+        # 답답함/불안 등 아직 해결 전인 감정을 담아 절제되고 진정성 있게 — 표준값보다
+        # stability를 살짝 올리고 style을 낮췄다.
+        "elevenlabs": {"stability": 0.55, "similarity_boost": 0.8, "style": 0.2, "use_speaker_boost": True},
+        "edge": {"rate": "-5%", "pitch": "-2Hz"},
+    },
+    "post_reveal": {
+        # 해결/상품 등장 이후는 쾌감있고 청량하게 — 표준값보다 stability를 낮추고
+        # style을 올려 더 생기있게 들리게 한다.
+        "elevenlabs": {"stability": 0.4, "similarity_boost": 0.8, "style": 0.45, "use_speaker_boost": True},
+        "edge": {"rate": "+5%", "pitch": "+3Hz"},
+    },
+}
+
 WordTiming = tuple[str, float, float]
 
 # 숫자 바로 뒤에 붙는 단위 약어를 한글 단위명으로 바꿔서 TTS가 영어 알파벳처럼 읽지
@@ -103,9 +133,13 @@ def _synthesize_with_elevenlabs(
     output_path: str,
     voice_id: str | None = None,
     client: httpx.Client | None = None,
+    voice_style: str | None = None,
 ) -> tuple[str, list[WordTiming] | None]:
     """ElevenLabs로 합성한다. /with-timestamps 엔드포인트를 써서 실제 단어별 타이밍도
     함께 받아온다 — edge-tts(문장 단위만 지원)와 달리 자막을 실제 발화에 정확히 맞출 수 있다.
+
+    voice_style을 넘기면("pre_reveal"/"post_reveal") VOICE_STYLE_PRESETS의 값을 쓴다 —
+    넘기지 않으면(None) 기존 DEFAULT_ELEVENLABS_VOICE_SETTINGS 그대로(하위호환).
     """
     active_voice_id = voice_id or ELEVENLABS_VOICE_ID
     if not ELEVENLABS_API_KEY:
@@ -113,6 +147,9 @@ def _synthesize_with_elevenlabs(
     if not active_voice_id:
         raise TTSError("ELEVENLABS_VOICE_ID가 설정되지 않았습니다.")
 
+    voice_settings = (
+        VOICE_STYLE_PRESETS[voice_style]["elevenlabs"] if voice_style else DEFAULT_ELEVENLABS_VOICE_SETTINGS
+    )
     url = f"{ELEVENLABS_BASE_URL}/{active_voice_id}/with-timestamps"
     headers = {
         "xi-api-key": ELEVENLABS_API_KEY,
@@ -121,14 +158,7 @@ def _synthesize_with_elevenlabs(
     body = {
         "text": text,
         "model_id": ELEVENLABS_MODEL_ID,
-        # stability를 낮추고 style을 살짝 줘서 억양 기복이 있는 더 자연스러운 낭독 톤으로
-        # 조정했다(기존 stability=0.5/style 없음은 다소 단조롭게 들렸다).
-        "voice_settings": {
-            "stability": 0.45,
-            "similarity_boost": 0.8,
-            "style": 0.35,
-            "use_speaker_boost": True,
-        },
+        "voice_settings": voice_settings,
     }
 
     last_error: Exception | None = None
@@ -167,14 +197,20 @@ def _synthesize_with_edge(
     output_path: str,
     voice: str | None = None,
     communicate_factory=None,
+    voice_style: str | None = None,
 ) -> str:
+    """voice_style을 넘기면("pre_reveal"/"post_reveal") VOICE_STYLE_PRESETS의 rate/pitch를
+    edge_tts.Communicate에 함께 넘긴다 — 넘기지 않으면(None) 기존과 동일하게 voice만
+    넘긴다(하위호환, 테스트의 가짜 factory가 text/voice 2개 인자만 받아도 깨지지 않는다).
+    """
     active_voice = voice or EDGE_TTS_VOICE
     factory = communicate_factory or _default_edge_communicate_factory()
+    extra_kwargs = VOICE_STYLE_PRESETS[voice_style]["edge"] if voice_style else {}
 
     last_error: Exception | None = None
     for attempt in range(2):  # 최초 시도 + 재시도 1회 (AGENTS.md 코딩 컨벤션)
         try:
-            communicate = factory(text, active_voice)
+            communicate = factory(text, active_voice, **extra_kwargs)
             asyncio.run(communicate.save(output_path))
             return output_path
         except Exception as exc:  # noqa: BLE001 — edge-tts는 다양한 예외를 던져 넓게 잡는다
@@ -193,6 +229,7 @@ def _synthesize_scene_audio_with_timings(
     client: httpx.Client | None = None,
     provider: str | None = None,
     communicate_factory=None,
+    voice_style: str | None = None,
 ) -> tuple[str, list[WordTiming] | None]:
     """provider별 합성을 실행하고 (경로, 단어별 타이밍) 튜플로 통일해서 돌려준다.
 
@@ -202,10 +239,12 @@ def _synthesize_scene_audio_with_timings(
     """
     active_provider = provider or TTS_PROVIDER
     if active_provider == "edge":
-        path = _synthesize_with_edge(text, output_path, voice=voice_id, communicate_factory=communicate_factory)
+        path = _synthesize_with_edge(
+            text, output_path, voice=voice_id, communicate_factory=communicate_factory, voice_style=voice_style
+        )
         return path, None
     if active_provider == "elevenlabs":
-        return _synthesize_with_elevenlabs(text, output_path, voice_id=voice_id, client=client)
+        return _synthesize_with_elevenlabs(text, output_path, voice_id=voice_id, client=client, voice_style=voice_style)
     raise TTSError(f"알 수 없는 TTS_PROVIDER: {active_provider!r} (elevenlabs 또는 edge만 지원)")
 
 
@@ -216,14 +255,23 @@ def synthesize_scene_audio(
     client: httpx.Client | None = None,
     provider: str | None = None,
     communicate_factory=None,
+    voice_style: str | None = None,
 ) -> str:
     """텍스트를 mp3로 합성해 output_path에 저장하고 경로를 반환한다.
 
     provider가 없으면 app.config.TTS_PROVIDER를 따른다. voice_id는 공급자별 의미가
-    다르다(ElevenLabs: voice_id, edge: "ko-KR-SunHiNeural" 같은 보이스 이름).
+    다르다(ElevenLabs: voice_id, edge: "ko-KR-SunHiNeural" 같은 보이스 이름). voice_style은
+    "pre_reveal"/"post_reveal" 중 하나(VOICE_STYLE_PRESETS) — 넘기지 않으면 기존 기본
+    보이스 설정 그대로(하위호환).
     """
     path, _ = _synthesize_scene_audio_with_timings(
-        text, output_path, voice_id=voice_id, client=client, provider=provider, communicate_factory=communicate_factory
+        text,
+        output_path,
+        voice_id=voice_id,
+        client=client,
+        provider=provider,
+        communicate_factory=communicate_factory,
+        voice_style=voice_style,
     )
     return path
 
@@ -254,8 +302,15 @@ def synthesize_script_audio(
     client: httpx.Client | None = None,
     provider: str | None = None,
     communicate_factory=None,
+    pre_reveal_stages: frozenset[str] | None = None,
 ) -> list[dict]:
     """scenes 각각을 mp3로 합성하고 실측 길이 + (있으면) 단어별 타이밍을 붙여 반환한다.
+
+    pre_reveal_stages를 넘기면(app/script/formats.py의 ScriptFormat.pre_reveal_stages) 그
+    경계를 기준으로 씬마다 다른 보이스 톤을 쓴다 — 아직 상품이 등장하기 전 구간은 절제되고
+    진정성 있게(pre_reveal 프리셋), 그 이후는 쾌감있고 청량하게(post_reveal 프리셋) 반전시킨다
+    (참고용 사례를 보고 도입 — VOICE_STYLE_PRESETS 참고). 넘기지 않으면(None) 기존처럼 모든
+    씬이 동일한 기본 보이스 설정을 쓴다(하위호환).
 
     반환값: [{"seq": int, "path": str, "duration_sec": float, "word_timings": list | None}, ...]
     word_timings는 ElevenLabs일 때만 채워진다(edge-tts는 단어 단위 타임스탬프 미지원).
@@ -264,6 +319,9 @@ def synthesize_script_audio(
     for scene in scenes:
         seq = scene["seq"]
         output_path = f"{output_dir}/scene_{seq}.mp3"
+        voice_style = None
+        if pre_reveal_stages is not None:
+            voice_style = "pre_reveal" if scene.get("stage") in pre_reveal_stages else "post_reveal"
         _, word_timings = _synthesize_scene_audio_with_timings(
             normalize_units_for_tts(scene["narration"]),
             output_path,
@@ -271,6 +329,7 @@ def synthesize_script_audio(
             client=client,
             provider=provider,
             communicate_factory=communicate_factory,
+            voice_style=voice_style,
         )
         duration = get_audio_duration_sec(output_path)
         results.append({"seq": seq, "path": output_path, "duration_sec": duration, "word_timings": word_timings})

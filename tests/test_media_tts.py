@@ -61,9 +61,10 @@ class _FakeCommunicate:
 
     instances: list["_FakeCommunicate"] = []
 
-    def __init__(self, text, voice):
+    def __init__(self, text, voice, **kwargs):
         self.text = text
         self.voice = voice
+        self.kwargs = kwargs
         _FakeCommunicate.instances.append(self)
 
     async def save(self, path):
@@ -156,6 +157,99 @@ def test_normalize_units_for_tts_leaves_model_code_alphabet_untouched():
 def test_normalize_units_for_tts_handles_multiple_units_in_one_sentence():
     result = tts.normalize_units_for_tts("20L, 500W, 1.5kg 스펙")
     assert result == "20리터, 500와트, 1.5킬로그램 스펙"
+
+
+# --- 씬별 보이스 톤 아크(pre_reveal/post_reveal) ---
+
+
+def test_elevenlabs_pre_reveal_voice_style_uses_lower_style_setting(tmp_path):
+    client = _FakeHttpxClient(
+        [_FakeResponse(200, json_body=_fake_alignment_json(b"AUDIO", ["텍스트"]))]
+    )
+    tts.synthesize_scene_audio(
+        "텍스트", str(tmp_path / "out.mp3"), client=client, provider="elevenlabs", voice_style="pre_reveal"
+    )
+    sent_settings = client.request_bodies[0]["voice_settings"]
+    assert sent_settings == tts.VOICE_STYLE_PRESETS["pre_reveal"]["elevenlabs"]
+
+
+def test_elevenlabs_post_reveal_voice_style_uses_higher_style_setting(tmp_path):
+    client = _FakeHttpxClient(
+        [_FakeResponse(200, json_body=_fake_alignment_json(b"AUDIO", ["텍스트"]))]
+    )
+    tts.synthesize_scene_audio(
+        "텍스트", str(tmp_path / "out.mp3"), client=client, provider="elevenlabs", voice_style="post_reveal"
+    )
+    sent_settings = client.request_bodies[0]["voice_settings"]
+    assert sent_settings == tts.VOICE_STYLE_PRESETS["post_reveal"]["elevenlabs"]
+
+
+def test_elevenlabs_no_voice_style_uses_default_settings(tmp_path):
+    client = _FakeHttpxClient(
+        [_FakeResponse(200, json_body=_fake_alignment_json(b"AUDIO", ["텍스트"]))]
+    )
+    tts.synthesize_scene_audio("텍스트", str(tmp_path / "out.mp3"), client=client, provider="elevenlabs")
+    sent_settings = client.request_bodies[0]["voice_settings"]
+    assert sent_settings == tts.DEFAULT_ELEVENLABS_VOICE_SETTINGS
+
+
+def test_edge_voice_style_passes_rate_and_pitch_to_communicate(tmp_path):
+    tts.synthesize_scene_audio(
+        "텍스트",
+        str(tmp_path / "out.mp3"),
+        provider="edge",
+        communicate_factory=_FakeCommunicate,
+        voice_style="pre_reveal",
+    )
+    assert _FakeCommunicate.instances[0].kwargs == tts.VOICE_STYLE_PRESETS["pre_reveal"]["edge"]
+
+
+def test_edge_no_voice_style_passes_no_extra_kwargs(tmp_path):
+    tts.synthesize_scene_audio(
+        "텍스트", str(tmp_path / "out.mp3"), provider="edge", communicate_factory=_FakeCommunicate
+    )
+    assert _FakeCommunicate.instances[0].kwargs == {}
+
+
+def test_synthesize_script_audio_assigns_pre_and_post_reveal_by_stage(monkeypatch, tmp_path):
+    monkeypatch.setattr(tts, "get_audio_duration_sec", lambda path: 1.0)
+    client = _FakeHttpxClient(
+        [
+            _FakeResponse(200, json_body=_fake_alignment_json(b"AUDIO", ["씬1"])),
+            _FakeResponse(200, json_body=_fake_alignment_json(b"AUDIO", ["씬2"])),
+        ]
+    )
+    scenes = [
+        {"seq": 1, "stage": "empathy", "narration": "씬1"},
+        {"seq": 2, "stage": "product", "narration": "씬2"},
+    ]
+
+    tts.synthesize_script_audio(
+        scenes, str(tmp_path), client=client, provider="elevenlabs",
+        pre_reveal_stages=frozenset({"empathy"}),
+    )
+
+    assert client.request_bodies[0]["voice_settings"] == tts.VOICE_STYLE_PRESETS["pre_reveal"]["elevenlabs"]
+    assert client.request_bodies[1]["voice_settings"] == tts.VOICE_STYLE_PRESETS["post_reveal"]["elevenlabs"]
+
+
+def test_synthesize_script_audio_without_pre_reveal_stages_uses_default_for_all(monkeypatch, tmp_path):
+    monkeypatch.setattr(tts, "get_audio_duration_sec", lambda path: 1.0)
+    client = _FakeHttpxClient(
+        [
+            _FakeResponse(200, json_body=_fake_alignment_json(b"AUDIO", ["씬1"])),
+            _FakeResponse(200, json_body=_fake_alignment_json(b"AUDIO", ["씬2"])),
+        ]
+    )
+    scenes = [
+        {"seq": 1, "stage": "empathy", "narration": "씬1"},
+        {"seq": 2, "stage": "product", "narration": "씬2"},
+    ]
+
+    tts.synthesize_script_audio(scenes, str(tmp_path), client=client, provider="elevenlabs")
+
+    assert client.request_bodies[0]["voice_settings"] == tts.DEFAULT_ELEVENLABS_VOICE_SETTINGS
+    assert client.request_bodies[1]["voice_settings"] == tts.DEFAULT_ELEVENLABS_VOICE_SETTINGS
 
 
 def test_elevenlabs_retries_once_then_succeeds(tmp_path):

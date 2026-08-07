@@ -1,7 +1,11 @@
+import subprocess
+
 import pytest
 
 from app.media import video_generator
-from app.media.video_generator import VideoGenerationError, generate_scene_video
+from app.media.video_generator import VideoGenerationError, _validate_video_bytes, generate_scene_video
+
+FFMPEG_AVAILABLE = subprocess.run(["ffmpeg", "-version"], capture_output=True).returncode == 0
 
 
 class _FakeResponse:
@@ -56,6 +60,10 @@ def _no_real_sleep(monkeypatch):
     # POLL_INTERVAL_SEC(10초)만큼 실제로 자면 테스트가 느려지니 무력화한다.
     monkeypatch.setattr(video_generator.time, "sleep", lambda *_a, **_k: None)
     monkeypatch.setattr(video_generator, "GEMINI_API_KEY", "fake-key")
+    # 이 테스트들은 제출/폴링/다운로드/재시도 HTTP 흐름만 검증한다 — 실제 mp4가 아닌
+    # 가짜 바이트를 "다운로드된 영상"으로 쓰므로, _validate_video_bytes(ffprobe 검증)는
+    # 여기서는 항상 통과시킨다. 검증 로직 자체는 아래 별도 테스트에서 다룬다.
+    monkeypatch.setattr(video_generator, "_validate_video_bytes", lambda *_a, **_k: None)
 
 
 def test_generate_scene_video_returns_bytes_on_first_poll():
@@ -158,3 +166,54 @@ def test_generate_scene_video_raises_without_api_key(monkeypatch):
 
     with pytest.raises(VideoGenerationError):
         generate_scene_video(b"reference-image", "image/jpeg", "고민", "나레이션", client=_FakeClient())
+
+
+# --- _validate_video_bytes: Veo가 깨진/손상된 파일을 돌려주는 명백한 실패를 걸러낸다
+# (사용자 피드백: 재렌더 시 후킹 영상이 이상하게 나오는 경우가 있었다) ---
+
+
+def test_validate_video_bytes_rejects_too_small_file():
+    with pytest.raises(VideoGenerationError, match="용량"):
+        _validate_video_bytes(b"tiny")
+
+
+def test_validate_video_bytes_rejects_corrupted_container():
+    # 크기는 충분하지만 mp4 컨테이너가 아닌 쓰레기 바이트 — ffprobe가 읽지 못해야 한다.
+    with pytest.raises(VideoGenerationError, match="검증 실패"):
+        _validate_video_bytes(b"not a real video file" * 100)
+
+
+@pytest.mark.skipif(not FFMPEG_AVAILABLE, reason="ffmpeg not available in this environment")
+def test_validate_video_bytes_accepts_real_video(tmp_path):
+    real_video_path = tmp_path / "real.mp4"
+    subprocess.run(
+        [
+            "ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=duration=1:size=320x240:rate=10",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", str(real_video_path),
+        ],
+        capture_output=True,
+        check=True,
+    )
+    real_video_bytes = real_video_path.read_bytes()
+    _validate_video_bytes(real_video_bytes)  # 예외 없이 통과해야 한다
+
+
+@pytest.mark.skipif(not FFMPEG_AVAILABLE, reason="ffmpeg not available in this environment")
+def test_generate_scene_video_retries_when_downloaded_video_is_corrupted(monkeypatch):
+    # 위 autouse 픽스처의 _validate_video_bytes 무력화를 이 테스트에서만 되돌려서, 실제
+    # 검증 로직이 재시도 흐름과 제대로 연결돼 있는지 end-to-end로 확인한다.
+    monkeypatch.undo()
+    monkeypatch.setattr(video_generator.time, "sleep", lambda *_a, **_k: None)
+    monkeypatch.setattr(video_generator, "GEMINI_API_KEY", "fake-key")
+
+    client = _FakeClient(
+        post_responses=[_submit_ok(), _submit_ok()],
+        get_responses=[
+            _done_response(), _FakeResponse(200, content=b"garbage-not-a-video"),
+            _done_response(), _FakeResponse(200, content=b"garbage-not-a-video"),
+        ],
+    )
+
+    with pytest.raises(VideoGenerationError):
+        generate_scene_video(b"reference-image", "image/jpeg", "고민", "나레이션", client=client)
+    assert len(client.post_calls) == 2  # 검증 실패도 재시도 대상이 된다

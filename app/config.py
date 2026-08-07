@@ -55,9 +55,6 @@ IMPULSE_PRICE_THRESHOLD = 30000
 # GET /api/products 기본 노출 임계값 (하루 3편 목표라 70 -> 80으로 상향, overview.md v2.1 참조).
 DEFAULT_MIN_SCORE = 80
 
-# docs/00_project_overview.md "대본 설계" — 대본 톤 7종.
-SCRIPT_TONES = ["불편해결", "우월감", "보상", "생활팁", "사실형", "생활형", "실리적"]
-
 DEFAULT_TARGET_PERSONA = "40-50대 여성"
 
 # docs/03_interfaces.md 4번 — educational_note에 절대 포함되면 안 되는 진단/치료/효능보장 암시 표현.
@@ -82,6 +79,21 @@ POLICY_CHECK_SECRET = os.getenv("POLICY_CHECK_SECRET", "")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "")
 SESSION_COOKIE_NAME = "couparvi_session"
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7  # 7일
+
+# docs/03_interfaces.md 4-1번 — 캡션 편집기(씬별 자막/후킹/상시CTA)의 폰트 선택지.
+# 전부 SIL OFL 라이선스로 google/fonts 저장소에서 받아 assets/fonts/에 라이선스 파일과
+# 함께 번들했다(나눔고딕과 같은 방식). 키는 caption_overrides JSON의 "font" 값과 1:1 대응.
+FONT_REGISTRY = {
+    "nanum_gothic": "assets/fonts/NanumGothic.ttf",
+    "black_han_sans": "assets/fonts/BlackHanSans.ttf",
+    "gothic_a1": "assets/fonts/GothicA1-Bold.ttf",
+}
+DEFAULT_FONT_KEY = "nanum_gothic"
+FONT_LABELS = {
+    "nanum_gothic": "나눔고딕 (기본)",
+    "black_han_sans": "블랙한산스 (임팩트)",
+    "gothic_a1": "고딕 A1 (깔끔)",
+}
 
 # docs/03_interfaces.md 9번 — policy_snapshots 초기 시드 목록. 정확한 URL은 Phase 4
 # 착수 시 최신 링크로 재확인 후 반영한다(정책 페이지 경로는 종종 바뀐다).

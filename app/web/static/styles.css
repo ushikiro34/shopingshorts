@@ -1,26 +1,48 @@
 :root {
-  /* 미드나이트 네이비 배경 + 밝은 오렌지 포인트 — 각진 코너의 다크 매거진/스튜디오 톤.
-     로즈골드는 네이비 위에서 가독성이 떨어져 채도 높은 오렌지로 교체함. */
-  --accent: #ff7113;
-  --accent-tint: rgb(231, 104, 0);
-  --accent-deep: #f16c13;
-  --accent-deep-tint: rgba(255, 235, 222, 0.897);
-  /* accent/accent-deep은 채도가 거의 같아 hover/active만으로는 눌림 효과가 잘 안 보여서,
-     확실히 더 어두운 프레스 전용 톤을 따로 둔다. */
-  --accent-press: #cc5a0f;
-  --success: #34D399;
-  --gray: #000000;
-  --danger: #ff5d5d;
-  --bg: #06070e;
-  --card: #0f1320;
-  --sidebar-bg: #0a0c14;
-  --border: #172136;
-  --text: #fdf6ec;
-  --text-dim: #c7cee4;
-  --radius: 0px;
+  /* 웜 미니멀(Warm Minimal) 톤에서 stitch 디자인 시스템(studio_editorial) 톤으로 전환 —
+     크림(surface) / 그레이(secondary, 중립) / 포인트(primary, 테라코타) 3단 컨셉을
+     전역 변수에 먼저 반영한다(사용자 요청 — 컴포넌트별 디테일은 각 탭을 재설계할 때
+     이어서 확인). 값은 stitch/studio_editorial/DESIGN.md의 Material 3 토큰을 그대로
+     가져왔다(primary/on-surface-variant/outline-variant 등) — 사이드바에 먼저 적용해본
+     값과 동일 계열이라 사이드바·바디 색이 자연스럽게 이어진다. */
+  --accent: #8e4c3b;
+  --accent-tint: #ffdad2;
+  --accent-deep: #723526;
+  --accent-deep-tint: #ffb4a2;
+  --accent-press: #4e1a0e;
+  --success: #157a4f;
+  --success-tint: #e3f3ea;
+  /* "그레이" 톤은 stitch의 secondary/secondary-container를 그대로 쓴다 — 포인트(accent)와
+     구분되는 중립색으로, 보조 텍스트/배경에 쓴다. */
+  --gray: #655d55;
+  --gray-tint: #e9ded4;
+  --danger: #ba1a1a;
+  --danger-tint: #ffdad6;
+  /* 지금까지 변수 없이 리터럴 amber 값만 여기저기 쓰던 경고색 계열 — 정식 변수로 승격.
+     stitch에 정의되지 않은 색이라 기존 값 유지. */
+  --warning: #8a5a10;
+  --warning-tint: #fbf0da;
+  --bg: #fbf9f7;
+  --card: #ffffff;
+  /* 사이드바는 대시보드(Tailwind/stitch 팔레트)와 색을 맞추되, 나머지 앱 전역에서 쓰는
+     --accent/--accent-deep과는 분리된 전용 변수를 쓴다 — 그쪽을 바꾸면 배지·버튼 등
+     사이드바 밖 컴포넌트 색까지 같이 바뀌어버리기 때문. */
+  --sidebar-bg: #f5f3f1;
+  --sidebar-text: #53433f;
+  --sidebar-accent: #8e4c3b;
+  --sidebar-active-bg: #cc7e6b;
+  --sidebar-active-text: #4e1a0e;
+  --sidebar-hover-bg: #e9ded4;
+  --sidebar-border: #d9c1bc;
+  --border: #d9c1bc;
+  --text: #1b1c1b;
+  --text-dim: #53433f;
+  /* 처음엔 14px로 시작했는데 "더 각졌으면 좋겠다"는 피드백으로 낮췄다 — 완전 각짐(0)까지
+     가진 않고 톤을 유지할 정도로만 살짝 둥글게. */
+  --radius: 6px;
 
-  --font-heading: "Playfair Display", Georgia, serif;
-  --font-body: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+  --font-heading: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  --font-body: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
 
   /* 앱 골격(사이드바 폭 / 바디-바텀) 고정 크기 */
   --sidebar-w: 220px;
@@ -44,44 +66,6 @@ body {
   font-size: 16px;
 }
 
-/* 실제 밤하늘 장노출 사진처럼 아주 작은 점 별 수십~백여 개가 흩뿌려진 느낌을 낸다.
-   개수/좌표/밝기가 랜덤이라 _star_field.html의 스크립트가 매 로드마다 동적으로 별을
-   생성한다(정적으로 100개 넘게 손으로 배치하는 대신). 별마다 animation-delay/duration/
-   --peak(최대 밝기)가 제각각이라 하나씩 랜덤한 타이밍에 밝아졌다 어두워진다. */
-.star-field {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  overflow: hidden;
-}
-
-.star {
-  position: absolute;
-  border-radius: 50%;
-  background: #fff;
-  opacity: 0.15;
-  animation-name: star-twinkle;
-  animation-timing-function: ease-in-out;
-  animation-iteration-count: infinite;
-}
-
-.star-bright {
-  box-shadow: 0 0 3px 1px rgba(255, 255, 255, 0.55);
-}
-
-@keyframes star-twinkle {
-
-  0%,
-  100% {
-    opacity: 0.15;
-  }
-
-  50% {
-    opacity: var(--peak, 0.6);
-  }
-}
-
 h1,
 h2,
 h3,
@@ -103,7 +87,7 @@ h3,
   width: var(--sidebar-w);
   height: 100vh;
   background: var(--sidebar-bg);
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--sidebar-border);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -115,12 +99,12 @@ h3,
   gap: 8px;
   padding: 20px 20px 8px;
   font-weight: 700;
-  font-size: 17px;
-  color: var(--accent-deep);
+  font-size: 16px;
+  color: var(--sidebar-accent);
 }
 
 .sidebar-brand .brand-mark {
-  color: var(--accent-deep);
+  color: var(--sidebar-accent);
 }
 
 .sidebar-nav {
@@ -134,11 +118,11 @@ h3,
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 12px;
-  border-radius: 0;
-  font-size: 15px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--text-dim);
+  color: var(--sidebar-text);
 }
 
 .sidebar-icon {
@@ -147,19 +131,19 @@ h3,
 }
 
 .sidebar-link:hover {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--sidebar-hover-bg);
+  color: var(--sidebar-text);
 }
 
 .sidebar-link.active {
-  background: var(--accent-deep-tint);
-  color: var(--accent-deep);
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-active-text);
 }
 
 .sidebar-bottom {
   margin-top: auto;
   padding: 12px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--sidebar-border);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -174,13 +158,13 @@ h3,
 
 .account-avatar {
   flex: 0 0 auto;
-  width: 32px;
-  height: 32px;
-  border-radius: 0;
-  background: var(--accent-deep);
-  color: white;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--sidebar-hover-bg);
+  color: var(--sidebar-accent);
   font-weight: 700;
-  font-size: 13px;
+  font-size: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -191,16 +175,16 @@ h3,
 }
 
 .account-email {
-  font-size: 13px;
-  color: var(--text);
+  font-size: 12px;
+  color: var(--sidebar-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .account-logout {
-  font-size: 12px;
-  color: var(--text-dim);
+  font-size: 11px;
+  color: var(--sidebar-text);
 }
 
 .main-area {
@@ -269,7 +253,7 @@ a {
 
 .login-card {
   background: var(--card);
-  border-radius: 0;
+  border-radius: var(--radius);
   padding: 32px;
   width: 100%;
   max-width: 360px;
@@ -296,7 +280,7 @@ a {
   width: 100%;
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   font-size: 16px;
   background: var(--card);
   color: var(--text);
@@ -309,7 +293,7 @@ a {
   gap: 6px;
   min-height: 44px;
   padding: 0 18px;
-  border-radius: 0;
+  border-radius: var(--radius);
   border: none;
   font-size: 16px;
   font-weight: 600;
@@ -345,8 +329,8 @@ a {
 }
 
 .policy-banner {
-  background: #4A3B14;
-  color: #FCD34D;
+  background: var(--warning-tint);
+  color: var(--warning);
   padding: 10px 16px;
   font-size: 15px;
   display: flex;
@@ -403,14 +387,14 @@ a {
 
 .summary-card {
   background: var(--card);
-  border-radius: 0;
+  border-radius: var(--radius);
   padding: 18px;
   border: 1px solid var(--border);
 }
 
 .summary-card.warning {
-  background: #4A3B14;
-  border-color: #6B5420;
+  background: var(--warning-tint);
+  border-color: #e6cd96;
 }
 
 .summary-card .num {
@@ -459,7 +443,7 @@ a {
   position: relative;
   width: 100%;
   aspect-ratio: 9 / 16;
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--bg);
   border: 1px solid var(--border);
   overflow: hidden;
@@ -520,7 +504,7 @@ a {
 
 .project-card-empty {
   aspect-ratio: 9 / 16;
-  border-radius: 0;
+  border-radius: var(--radius);
   border: 1px dashed var(--border);
   background: transparent;
 }
@@ -562,7 +546,7 @@ a {
   padding: 10px 14px 12px;
   background: transparent;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius);
   white-space: nowrap;
   font-size: 15px;
   font-weight: 600;
@@ -578,7 +562,7 @@ a {
   bottom: 0;
   height: 2px;
   background: transparent;
-  border-radius: 0;
+  border-radius: var(--radius);
   transition: background 0.15s ease;
 }
 
@@ -600,7 +584,7 @@ a {
 
 .tab-pill .badge {
   background: var(--bg);
-  border-radius: 0;
+  border-radius: var(--radius);
   padding: 1px 7px;
   margin-left: 6px;
   font-size: 13px;
@@ -612,39 +596,67 @@ a {
   color: var(--accent);
 }
 
-/* --- 발굴 탭: 검색 영역(탭버튼과 미들영역 사이, 우측 정렬 한 줄) --- */
+/* --- 발굴 탭: 검색 영역(탭버튼과 미들영역 사이) ---
+   stitch(template_library) 검색바 컨셉 적용: 우측 정렬 대신 좌측에 붙이고, 알약형 +
+   왼쪽 돋보기 아이콘 스타일로 바꿨다 — 상품선택 탭 재설계의 첫 단계(사용자 요청). */
 .search-inline-form {
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
   align-items: center;
   gap: 8px;
   padding-top: 12px;
   flex-wrap: wrap;
 }
 
+.search-input-wrap {
+  position: relative;
+  flex: 1 1 480px;
+  max-width: 560px;
+  display: flex;
+  align-items: center;
+}
+
+.search-input-icon {
+  position: absolute;
+  left: 14px;
+  color: var(--sidebar-text);
+  opacity: 0.7;
+  display: flex;
+  pointer-events: none;
+}
+
 .search-inline-form input[type=text],
 .search-inline-form select,
 .search-inline-form .btn {
   height: 44px;
-  border-radius: 0;
+  border-radius: 999px;
 }
 
 .search-inline-form input[type=text] {
-  flex: 0 1 260px;
-  padding: 0 14px;
-  border: 1px solid var(--border);
+  width: 100%;
+  padding: 0 14px 0 40px;
+  border: 1px solid var(--sidebar-border);
   font-size: 15px;
   font-family: inherit;
-  background: var(--card);
+  background: var(--sidebar-bg);
   color: var(--text);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.search-inline-form input[type=text]:focus {
+  outline: none;
+  border-color: var(--sidebar-accent);
+  background: var(--card);
 }
 
 .search-inline-form select {
-  padding: 0 12px;
-  border: 1px solid var(--border);
-  font-size: 15px;
+  flex: 0 1 260px;
+  min-width: 220px;
+  padding: 0 16px;
+  border: 1px solid var(--sidebar-border);
+  font-size: 14px;
   font-family: inherit;
-  background: var(--card);
+  background: var(--sidebar-bg);
   color: var(--text);
 }
 
@@ -656,7 +668,7 @@ a {
 .btn-spinner {
   width: 16px;
   height: 16px;
-  border-radius: 0;
+  border-radius: var(--radius);
   border: 2px solid rgba(255, 255, 255, 0.4);
   border-top-color: #fff;
   animation: btn-spin 0.7s linear infinite;
@@ -684,7 +696,7 @@ a {
 
 .panel {
   background: var(--card);
-  border-radius: 0;
+  border-radius: var(--radius);
   border: 1px solid var(--border);
   padding: 16px;
   overflow-y: auto;
@@ -705,7 +717,7 @@ a {
   display: flex;
   align-items: stretch;
   gap: 2px;
-  border-radius: 0;
+  border-radius: var(--radius);
   margin-bottom: 2px;
   border: 1px solid transparent;
   box-shadow: inset 0 -1px 0 var(--border);
@@ -724,7 +736,7 @@ a {
    (--accent-tint을 쓰면 다른 곳에서 불투명 오렌지로 바뀔 때 같이 진해지므로 별도 rgba 사용),
    구분은 테두리 색으로 충분히 전달한다. */
 .list-row.selected {
-  background: rgba(255, 113, 19, 0.15);
+  background: rgba(160, 84, 41, 0.12);
   border-color: var(--accent);
 }
 
@@ -751,13 +763,13 @@ a {
   cursor: pointer;
   width: 36px;
   height: 36px;
-  border-radius: 0;
+  border-radius: var(--radius);
   font-size: 16px;
   margin-right: 6px;
 }
 
 .list-delete-btn:hover {
-  background: #4A1F24;
+  background: var(--danger-tint);
   color: var(--danger);
 }
 
@@ -765,15 +777,15 @@ a {
   flex: 0 0 auto;
   font-size: 13px;
   padding: 1px 8px;
-  border-radius: 0;
-  background: #2E3B57;
+  border-radius: var(--radius);
+  background: var(--gray-tint);
   color: var(--text-dim);
 }
 
 .empty-banner {
   background: var(--bg);
   border: 1px dashed var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   padding: 16px;
   text-align: center;
   color: var(--text-dim);
@@ -818,7 +830,21 @@ a {
   display: inline-block;
   flex: 0 0 auto;
   padding: 2px 10px;
-  border-radius: 0;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 미디어제작 탭 — 렌더링 진행 중일 때 제목 옆에 경과 시간을 보여준다(사용자 피드백:
+   "진행중" 텍스트만으로는 얼마나 걸리는지 알 수 없다). */
+.render-elapsed-badge {
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: 10px;
+  padding: 3px 10px;
+  border-radius: var(--radius);
+  background: var(--accent-tint);
+  color: var(--accent);
   font-size: 13px;
   font-weight: 600;
 }
@@ -828,54 +854,54 @@ a {
   overflow-wrap: break-word;
 }
 
-/* pill-status-2와 같은 이유로 --accent-tint가 불투명 오렌지로 바뀌면서 텍스트가 거의
-   안 보였다 (미디어제작 탭의 "렌더링중" 뱃지 등) -> 전용 색으로 분리 */
+/* 미디어제작 탭의 "렌더링중" 뱃지 등에 쓰인다. */
 .pill-accent {
-  background: #4A2E1C;
+  background: var(--accent-tint);
   color: var(--accent);
 }
 
 .pill-success {
-  background: #15342A;
+  background: var(--success-tint);
   color: var(--success);
 }
 
 .pill-gray {
-  background: #2E3B57;
+  background: var(--gray-tint);
   color: var(--gray);
 }
 
 .pill-danger {
-  background: #4A1F24;
+  background: var(--danger-tint);
   color: var(--danger);
 }
 
-/* 대시보드 "내 프로젝트" 상태 뱃지 — 파이프라인 단계가 뒤로 갈수록 진해진다 (1~5단계) */
+/* 대시보드 "내 프로젝트" 상태 뱃지 — 파이프라인 단계가 뒤로 갈수록 진해진다 (1~5단계).
+   웜 미니멀 톤 전환 이후 --accent-tint/--accent-deep-tint는 다른 곳에서 불투명하게 쓰이지
+   않는 순수 파스텔 배경이라(예전엔 active nav 등과 겹쳐써서 전용 리터럴로 분리해야 했다)
+   이제 변수를 그대로 재사용해도 안전하다. */
 .pill-status-1 {
-  background: #2E3B57;
+  background: var(--gray-tint);
   color: var(--text-dim);
 }
 
 .pill-status-2 {
-  /* --accent-tint을 다른 곳(active nav 등)에서 불투명 오렌지로 바꿔 쓰면서
-     여기 텍스트와 배경이 거의 같은 색이 돼 안 보였다 -> 전용 색으로 분리 */
-  background: #4A2E1C;
+  background: var(--accent-tint);
   color: var(--accent);
 }
 
 .pill-status-3 {
-  background: #5A3B24;
-  color: #E4A377;
+  background: var(--accent-deep-tint);
+  color: var(--accent-deep);
 }
 
 .pill-status-4 {
-  /* pill-status-2와 같은 이유 (--accent-deep-tint가 불투명 밝은색으로 바뀜) -> 전용 색으로 분리 */
-  background: #6B3A12;
-  color: #F0B37E;
+  /* 3~4단계를 시각적으로 구분하기 위한 단계 전용 색(변수화하지 않음). */
+  background: #ecd0b3;
+  color: var(--accent-press);
 }
 
 .pill-status-5 {
-  background: #15342A;
+  background: var(--success-tint);
   color: var(--success);
 }
 
@@ -896,7 +922,7 @@ a {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   font-size: 15px;
   font-family: inherit;
   background: var(--card);
@@ -905,7 +931,7 @@ a {
 
 .edu-card {
   background: var(--accent-tint);
-  border-radius: 0;
+  border-radius: var(--radius);
   padding: 12px;
   margin-bottom: 14px;
 }
@@ -946,20 +972,22 @@ a {
   display: flex;
   align-items: stretch;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--card);
   overflow: hidden;
 }
 
-/* 나레이션 영역이 너무 높다는 피드백으로 나레이션 높이를 기존의 절반으로 줄이고, 자막
-   높이는 그대로 유지했다 — 두 영역이 이제 동일한 크기라 grid-template-rows도 1:1로 맞췄다
-   (자막 영역 크기 = 기존 그대로, 카드 총높이 = 기존의 2/3). */
+/* 나레이션/자막/화면연출 세 줄이 각각 최소 3줄까지는 내부 스크롤 없이 보이도록 카드
+   높이를 계산했다(사용자 피드백) — .script-part-row-content(13px/line-height 1.5 ≈
+   19.5px 1줄) 3줄 ≈ 58.5px + .script-part-row 위아래 패딩 12px = 행당 ~70.5px, 그걸
+   3줄(나레이션/자막/화면연출)만큼 쌓고 .script-cell-display 바깥 패딩 24px을 더한 값이다.
+   내용이 3줄을 넘으면 지금처럼 그 줄만 따로 스크롤된다(overflow-y:auto는 유지). */
 .script-card-4 {
-  height: calc(1.6em * 5 + 24px);
+  height: 245px;
 }
 
 .script-card-8 {
-  height: calc(1.6em * 9 + 24px);
+  height: 280px;
 }
 
 .script-card-label {
@@ -984,6 +1012,19 @@ a {
   flex: 0 0 auto;
   width: 16px;
   height: 16px;
+}
+
+/* 전용 아이콘이 없는 신규 형식 단계(예: 기획천재발견형)는 숫자 배지로 대체한다. */
+.script-card-badge {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--text-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
 }
 
 .script-cell-display {
@@ -1012,9 +1053,9 @@ a {
    길어도 자막 줄이 밀려 잘리지 않는다. */
 .script-part-content {
   display: grid;
-  /* 나레이션 높이를 절반으로 줄이면서 자막 높이는 그대로 유지한 결과 두 영역이 같은
-     크기가 됐다 — 1:1로 배분한다. */
-  grid-template-rows: 1fr 1fr;
+  /* 나레이션/자막/화면연출 세 영역을 동일 비중으로 배분한다 — 각 줄은 자체
+     overflow-y:auto라 내용이 넘쳐도 줄 단위로 따로 스크롤된다. */
+  grid-template-rows: 1fr 1fr 1fr;
   height: 100%;
   width: 100%;
 }
@@ -1060,13 +1101,41 @@ a {
   opacity: 0.5;
 }
 
-.script-cell {
+/* 수정 모드에서 .script-cell-display 대신 보여주는 편집용 그룹 — 나레이션 textarea 1개 +
+   씬별 화면연출 textarea 여러 개를 세로로 쌓는다(카드 하나에 textarea가 여러 개일 수
+   있어서, 예전처럼 textarea 하나가 카드 전체를 채우는 방식 대신 이 컨테이너 안에서
+   각자 필요한 높이만 차지한다). */
+.script-cell-edit-group {
   flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow-y: auto;
+}
+
+.script-cell-edit-group[hidden] {
+  display: none;
+}
+
+.script-cell-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.script-cell-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent);
+}
+
+.script-cell {
   display: block;
   width: 100%;
-  height: 100%;
-  padding: 12px;
-  border: none;
+  padding: 8px;
+  border: 1px solid var(--border);
   resize: none;
   overflow-y: auto;
   font-family: inherit;
@@ -1076,48 +1145,22 @@ a {
   background: transparent;
 }
 
-.script-cell[hidden] {
-  display: none;
-}
-
 .script-cell:focus {
   outline: 2px solid var(--accent);
   outline-offset: -2px;
   background: var(--card);
 }
 
-/* 발굴 탭: 상세 영역 타이포그래피/구획 — 타이틀을 아래로 내리기 위한 상단 패딩 +
-   상품명/카테고리를 테이블로 구성 */
+/* 발굴 탭: 상세 영역 타이포그래피/구획 — 타이틀을 아래로 내리기 위한 상단 패딩.
+   "상품명"/"카테고리" 같은 표 형태 라벨은 없애고, 실제 상품명 밑에 카테고리를 필 하나로
+   보여준다(사용자 피드백 — 표는 정보 자체보다 라벨이 더 부각돼 보였다). */
 .detail-header {
   padding-top: 24px;
   margin-bottom: 4px;
 }
 
-.detail-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.detail-table th {
-  width: 100px;
-  text-align: left;
-  vertical-align: middle;
-  padding: 12px;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-dim);
-  background: var(--bg);
-  border: 1px solid var(--border);
-}
-
-.detail-table td {
-  padding: 12px;
-  border: 1px solid var(--border);
-  vertical-align: middle;
-}
-
 .detail-title {
-  margin: 0;
+  margin: 0 0 10px;
   font-size: 22px;
   font-weight: 700;
   font-family: var(--font-body);
@@ -1126,14 +1169,8 @@ a {
 .detail-meta-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.detail-meta {
-  margin: 0;
-  color: var(--text-dim);
-  font-size: 14px;
+  justify-content: flex-start;
+  gap: 10px;
 }
 
 .category-select {
@@ -1141,7 +1178,7 @@ a {
   height: 32px;
   padding: 0 10px;
   border: 1px solid var(--border);
-  border-radius: 0;
+  border-radius: var(--radius);
   font-size: 13px;
   font-family: inherit;
   background: var(--card);
@@ -1176,7 +1213,7 @@ a {
   justify-content: center;
   width: 18px;
   height: 18px;
-  border-radius: 0;
+  border-radius: var(--radius);
   background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text-dim);
@@ -1196,7 +1233,7 @@ a {
   max-width: min(320px, 80vw);
   background: #111827;
   color: #f9fafb;
-  border-radius: 0;
+  border-radius: var(--radius);
   padding: 12px 14px;
   font-size: 13px;
   font-weight: 400;
@@ -1242,7 +1279,7 @@ a {
 
 .score-cell {
   background: var(--bg);
-  border-radius: 0;
+  border-radius: var(--radius);
   padding: 10px 8px;
   text-align: center;
 }
@@ -1250,7 +1287,7 @@ a {
 .score-cell-label {
   display: block;
   font-size: 12px;
-  color: #fff;
+  color: var(--text-dim);
   margin-bottom: 4px;
 }
 
@@ -1270,7 +1307,7 @@ a {
 }
 
 .score-cell.tier-low {
-  background: #4A1F24;
+  background: var(--danger-tint);
 }
 
 .score-cell.tier-low .score-cell-value {
@@ -1278,25 +1315,24 @@ a {
 }
 
 .score-cell.tier-mid {
-  background: #4A3B14;
+  background: var(--warning-tint);
 }
 
 .score-cell.tier-mid .score-cell-value {
-  color: #FBBF24;
+  color: var(--warning);
 }
 
 .score-cell.tier-high {
-  background: #15342A;
+  background: var(--success-tint);
 }
 
 .score-cell.tier-high .score-cell-value {
   color: var(--success);
 }
 
-/* 총점은 score-grid 8번째 칸(4x2)으로 편입 — 등급색 대신 항상 포인트색 배경 + 흰 텍스트.
-   var(--accent)보다 한 톤 더 밝은 오렌지를 전용으로 써서 다른 오렌지 요소들과 구분되게 한다. */
+/* 총점은 score-grid 8번째 칸(4x2)으로 편입 — 등급색 대신 항상 포인트색 배경 + 흰 텍스트. */
 .score-cell-total {
-  background: #FF9500;
+  background: var(--accent-deep);
 }
 
 .score-cell-total .score-cell-label,
@@ -1357,7 +1393,7 @@ a {
   width: 20px;
   height: 20px;
   border: none;
-  border-radius: 0;
+  border-radius: var(--radius);
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
   cursor: pointer;
@@ -1410,13 +1446,13 @@ a {
 
 video {
   width: 100%;
-  border-radius: 0;
+  border-radius: var(--radius);
   background: black;
 }
 
 .thumb-preview {
   width: 160px;
-  border-radius: 0;
+  border-radius: var(--radius);
 }
 
 .toast {
@@ -1427,7 +1463,7 @@ video {
   background: #111827;
   color: white;
   padding: 12px 20px;
-  border-radius: 0;
+  border-radius: var(--radius);
   font-size: 15px;
   z-index: 50;
   opacity: 1;
@@ -1443,6 +1479,14 @@ video {
    탭으로 이동하는 것 자체는 여전히 필요) display:none 처리하지 않는다. action-panel
    맨 위, 아래쪽 생성/승인 등 주요 액션 버튼들과는 구분선으로 분리된 별도 영역에 둔다. */
 .prev-stage-section {
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* 대본작성 탭 우측 패널: "톤 선택 + 생성"과 "수정 + 승인"이 서로 다른 성격의 액션이라는
+   피드백으로 구분선으로 나눠 별도 영역처럼 보이게 한다(사용자 피드백). */
+.script-generate-section {
   margin-bottom: 16px;
   padding-bottom: 16px;
   border-bottom: 1px solid var(--border);

@@ -39,25 +39,52 @@
     </div>
     {% endif %}
 
+    {% set icon_svg = {
+    'empathy': '
+    <path
+      d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    ',
+    'emotion': '
+    <path
+      d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+    ',
+    'problem': '
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+    <line x1="12" y1="9" x2="12" y2="13" />
+    <line x1="12" y1="17" x2="12.01" y2="17" />',
+    'solution': '
+    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+    <polyline points="22 4 12 14.01 9 11.01" />',
+    'result': '
+    <path d="M23 6l-9.5 9.5-5-5L1 18" />
+    <path d="M17 6h6v6" />',
+    'product': '
+    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+    <line x1="3" y1="6" x2="21" y2="6" />
+    <path d="M16 10a4 4 0 0 1-8 0" />',
+    } %}
     <form id="script-edit-form" method="post" action="/scripts/{{ script.id }}/edit">
       <input type="hidden" name="product_id" value="{{ selected.id }}">
       <div class="script-card-list">
-        <div class="script-card script-card-4">
+        {% for stage in format.stages %}
+        {% set is_long_stage = loop.revindex <= 2 %} {% set stage_text=script.script_json.structure.get(stage.key, "" )
+          %} <div class="script-card {{ 'script-card-8' if is_long_stage else 'script-card-4' }}">
           <div class="script-card-label">
+            {% if stage.key in icon_svg %}
             <svg class="script-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path
-                d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-            </svg>
-            공감
+              stroke-linecap="round" stroke-linejoin="round">{{ icon_svg[stage.key] | safe }}</svg>
+            {% else %}
+            <span class="script-card-badge">{{ loop.index }}</span>
+            {% endif %}
+            {{ stage.label.replace(' ', '<br>') | safe }}
           </div>
+          {% set stage_scenes = script.script_json.scenes | selectattr('stage', 'equalto', stage.key) | list %}
           <div class="script-cell-display">
             <div class="script-part-content">
               <div class="script-part-row">
                 <span class="script-part-row-label">나레이션</span>
-                <div class="script-part-row-content">{{ script.script_json.structure.empathy }}</div>
+                <div class="script-part-row-content">{{ stage_text }}</div>
               </div>
-              {% set stage_scenes = script.script_json.scenes | selectattr('stage', 'equalto', 'empathy') | list %}
               <div class="script-part-row">
                 <span class="script-part-row-label">자막</span>
                 <div class="script-part-row-content is-caption">
@@ -68,32 +95,11 @@
                   {% endif %}
                 </div>
               </div>
-            </div>
-          </div>
-          <textarea name="empathy" class="script-cell" rows="4" readonly
-            hidden>{{ script.script_json.structure.empathy }}</textarea>
-        </div>
-        <div class="script-card script-card-4">
-          <div class="script-card-label">
-            <svg class="script-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path
-                d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-            </svg>
-            감정
-          </div>
-          <div class="script-cell-display">
-            <div class="script-part-content">
               <div class="script-part-row">
-                <span class="script-part-row-label">나레이션</span>
-                <div class="script-part-row-content">{{ script.script_json.structure.emotion }}</div>
-              </div>
-              {% set stage_scenes = script.script_json.scenes | selectattr('stage', 'equalto', 'emotion') | list %}
-              <div class="script-part-row">
-                <span class="script-part-row-label">자막</span>
+                <span class="script-part-row-label">화면연출</span>
                 <div class="script-part-row-content is-caption">
                   {% if stage_scenes %}
-                  {% for s in stage_scenes %}<div>{{ s.caption }}</div>{% endfor %}
+                  {% for s in stage_scenes %}<div>{{ s.visual }}</div>{% endfor %}
                   {% else %}
                   <span class="script-caption-empty">—</span>
                   {% endif %}
@@ -101,151 +107,38 @@
               </div>
             </div>
           </div>
-          <textarea name="emotion" class="script-cell" rows="4" readonly
-            hidden>{{ script.script_json.structure.emotion }}</textarea>
-        </div>
-        <div class="script-card script-card-4">
-          <div class="script-card-label">
-            <svg class="script-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-              <line x1="12" y1="9" x2="12" y2="13" />
-              <line x1="12" y1="17" x2="12.01" y2="17" />
-            </svg>
-            문제제기
-          </div>
-          <div class="script-cell-display">
-            <div class="script-part-content">
-              <div class="script-part-row">
-                <span class="script-part-row-label">나레이션</span>
-                <div class="script-part-row-content">{{ script.script_json.structure.problem }}</div>
-              </div>
-              {% set stage_scenes = script.script_json.scenes | selectattr('stage', 'equalto', 'problem') | list %}
-              <div class="script-part-row">
-                <span class="script-part-row-label">자막</span>
-                <div class="script-part-row-content is-caption">
-                  {% if stage_scenes %}
-                  {% for s in stage_scenes %}<div>{{ s.caption }}</div>{% endfor %}
-                  {% else %}
-                  <span class="script-caption-empty">—</span>
-                  {% endif %}
-                </div>
-              </div>
+          <div class="script-cell-edit-group" hidden>
+            <div class="script-cell-field">
+              <span class="script-cell-label">나레이션</span>
+              <textarea name="stage__{{ stage.key }}" class="script-cell" rows="{{ 6 if is_long_stage else 4 }}"
+                readonly>{{ stage_text }}</textarea>
             </div>
-          </div>
-          <textarea name="problem" class="script-cell" rows="4" readonly
-            hidden>{{ script.script_json.structure.problem }}</textarea>
-        </div>
-        <div class="script-card script-card-4">
-          <div class="script-card-label">
-            <svg class="script-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-              <polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
-            해결
-          </div>
-          <div class="script-cell-display">
-            <div class="script-part-content">
-              <div class="script-part-row">
-                <span class="script-part-row-label">나레이션</span>
-                <div class="script-part-row-content">{{ script.script_json.structure.solution }}</div>
-              </div>
-              {% set stage_scenes = script.script_json.scenes | selectattr('stage', 'equalto', 'solution') | list %}
-              <div class="script-part-row">
-                <span class="script-part-row-label">자막</span>
-                <div class="script-part-row-content is-caption">
-                  {% if stage_scenes %}
-                  {% for s in stage_scenes %}<div>{{ s.caption }}</div>{% endfor %}
-                  {% else %}
-                  <span class="script-caption-empty">—</span>
-                  {% endif %}
-                </div>
-              </div>
+            {% for s in stage_scenes %}
+            <div class="script-cell-field">
+              <span class="script-cell-label">화면연출 (씬 {{ s.seq }})</span>
+              <textarea name="visual__{{ s.seq }}" class="script-cell" rows="2" readonly>{{ s.visual }}</textarea>
             </div>
+            {% endfor %}
           </div>
-          <textarea name="solution" class="script-cell" rows="4" readonly
-            hidden>{{ script.script_json.structure.solution }}</textarea>
-        </div>
-        <div class="script-card script-card-8">
-          <div class="script-card-label">
-            <svg class="script-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="M23 6l-9.5 9.5-5-5L1 18" />
-              <path d="M17 6h6v6" />
-            </svg>
-            결과
-          </div>
-          <div class="script-cell-display">
-            <div class="script-part-content">
-              <div class="script-part-row">
-                <span class="script-part-row-label">나레이션</span>
-                <div class="script-part-row-content">{{ script.script_json.structure.result }}</div>
-              </div>
-              {% set stage_scenes = script.script_json.scenes | selectattr('stage', 'equalto', 'result') | list %}
-              <div class="script-part-row">
-                <span class="script-part-row-label">자막</span>
-                <div class="script-part-row-content is-caption">
-                  {% if stage_scenes %}
-                  {% for s in stage_scenes %}<div>{{ s.caption }}</div>{% endfor %}
-                  {% else %}
-                  <span class="script-caption-empty">—</span>
-                  {% endif %}
-                </div>
-              </div>
-            </div>
-          </div>
-          <textarea name="result" class="script-cell" rows="6" readonly
-            hidden>{{ script.script_json.structure.result }}</textarea>
-        </div>
-        <div class="script-card script-card-8">
-          <div class="script-card-label">
-            <svg class="script-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <path d="M16 10a4 4 0 0 1-8 0" />
-            </svg>
-            상품
-          </div>
-          <div class="script-cell-display">
-            <div class="script-part-content">
-              <div class="script-part-row">
-                <span class="script-part-row-label">나레이션</span>
-                <div class="script-part-row-content">{{ script.script_json.structure.product }}</div>
-              </div>
-              {% set stage_scenes = script.script_json.scenes | selectattr('stage', 'equalto', 'product') | list %}
-              <div class="script-part-row">
-                <span class="script-part-row-label">자막</span>
-                <div class="script-part-row-content is-caption">
-                  {% if stage_scenes %}
-                  {% for s in stage_scenes %}<div>{{ s.caption }}</div>{% endfor %}
-                  {% else %}
-                  <span class="script-caption-empty">—</span>
-                  {% endif %}
-                </div>
-              </div>
-            </div>
-          </div>
-          <textarea name="product" class="script-cell" rows="6" readonly
-            hidden>{{ script.script_json.structure.product }}</textarea>
-        </div>
       </div>
-    </form>
-    {% endif %}
+      {% endfor %}
   </div>
+  </form>
+  {% endif %}
+</div>
 
-  <div class="panel action-panel">
-    {% if selected %}
-    <div class="prev-stage-section">
-      <a class="prev-stage-link" href="/discover?selected={{ selected.id }}&view=detail">← 상품선택으로</a>
-    </div>
-    {% endif %}
+<div class="panel action-panel">
+  {% if selected %}
+  <div class="prev-stage-section">
+    <a class="prev-stage-link" href="/discover?selected={{ selected.id }}&view=detail">← 상품선택으로</a>
+  </div>
+  {% endif %}
+  <div class="script-generate-section">
     <form method="post" action="/scripts/{{ selected.id if selected else '' }}/generate" id="script-generate-form">
       <div class="card-field">
         <label>톤 선택</label>
         <select name="tone"
-          style="width:100%;padding:8px;border-radius:0;border:1px solid var(--border);background:var(--card);color:var(--text);"
+          style="width:100%;padding:8px;border-radius:var(--radius);border:1px solid var(--border);background:var(--card);color:var(--text);"
           {% if not selected %}disabled{% endif %}>
           {% for t in tones %}
           <option value="{{ t }}" {% if script and script.tone==t %}selected{% endif %}>{{ t }}</option>
@@ -253,10 +146,12 @@
         </select>
       </div>
       <button class="btn btn-ghost" type="submit" id="script-generate-btn" {% if not selected %}disabled{% endif %}>
-        <span class="btn-label">{% if script %}다른 톤으로 재생성{% else %}대본 생성{% endif %}</span>
+        <span class="btn-label">{% if script %}선택한 톤으로 생성{% else %}대본 생성{% endif %}</span>
         <span class="btn-spinner" hidden></span>
       </button>
     </form>
+  </div>
+  <div class="script-approve-section">
     <button class="btn btn-ghost" type="submit" form="script-edit-form" id="script-edit-btn" {% if not script
       %}disabled{% endif %}>
       <span class="btn-label">수정</span>
@@ -271,11 +166,13 @@
     </form>
   </div>
 </div>
+</div>
 <script>
   // 대본작성 탭: 우측 버튼 3종(생성/수정/승인) 클릭 시 로딩 스피너 + disabled 처리.
-  // 평상시엔 세로 중앙정렬이 가능한 일반 div(.script-cell-display)를 보여주고,
-  // 수정 모드에서만 실제 textarea로 전환한다(네이티브 textarea는 내부 텍스트를
-  // 세로로 가운데 정렬할 CSS 방법이 없어 표시용/편집용을 분리했다).
+  // 평상시엔 세로 중앙정렬이 가능한 일반 div(.script-cell-display)를 보여주고, 수정
+  // 모드에서만 편집용 그룹(.script-cell-edit-group — 나레이션 textarea 1개 + 씬별
+  // 화면연출 textarea 여러 개)으로 전환한다(네이티브 textarea는 내부 텍스트를 세로로
+  // 가운데 정렬할 CSS 방법이 없어 표시용/편집용을 분리했다).
   document.addEventListener("DOMContentLoaded", function () {
     function wireSubmitSpinner(formId, btnId, loadingText) {
       var form = document.getElementById(formId);
@@ -296,6 +193,7 @@
     var editForm = document.getElementById("script-edit-form");
     if (editBtn && editForm && !editBtn.disabled) {
       var displays = document.querySelectorAll("#script-edit-form .script-cell-display");
+      var editGroups = document.querySelectorAll("#script-edit-form .script-cell-edit-group");
       var textareas = document.querySelectorAll("#script-edit-form .script-cell");
       var editing = false;
       editBtn.addEventListener("click", function (e) {
@@ -303,7 +201,8 @@
           e.preventDefault();
           editing = true;
           displays.forEach(function (d) { d.hidden = true; });
-          textareas.forEach(function (t) { t.hidden = false; t.readOnly = false; });
+          editGroups.forEach(function (g) { g.hidden = false; });
+          textareas.forEach(function (t) { t.readOnly = false; });
           if (textareas[0]) textareas[0].focus();
           editBtn.querySelector(".btn-label").textContent = "적용";
         }

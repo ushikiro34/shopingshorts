@@ -1,6 +1,7 @@
 import os
 
 from app.media.render import (
+    HOOK_FONTSIZE,
     MAX_NARRATION_SPEED,
     MIN_NARRATION_SPEED,
     NARRATION_SPEED,
@@ -12,9 +13,13 @@ from app.media.render import (
     build_xfade_filter_complex,
     build_zoompan_filter,
     calc_narration_speed,
+    compute_scene_windows,
     escape_path_for_filter,
     pick_bgm_track,
+    recomposite_captions,
     resolve_font_path,
+    resolve_font_path_for_key,
+    resolve_scene_text_elements,
     wrap_text_lines,
 )
 
@@ -271,6 +276,33 @@ def test_build_hook_text_filter_with_product_name_adds_second_line(tmp_path):
         assert f.read() == "테스트 상품 20L"
 
 
+def test_build_hook_text_filter_fontsize_override_scales_line_height(tmp_path):
+    font = resolve_font_path()
+    default_filt = build_hook_text_filter("이거 실화냐", font, str(tmp_path), "scene1")
+    assert f"fontsize={HOOK_FONTSIZE}" in default_filt
+
+    big_filt = build_hook_text_filter("이거 실화냐", font, str(tmp_path), "scene2", fontsize=100)
+    assert "fontsize=100" in big_filt
+
+
+def test_build_hook_text_filter_fontcolor_override(tmp_path):
+    font = resolve_font_path()
+    default_filt = build_hook_text_filter("이거 실화냐", font, str(tmp_path), "scene1")
+    assert "fontcolor=white" in default_filt
+
+    override_filt = build_hook_text_filter("이거 실화냐", font, str(tmp_path), "scene2", fontcolor="#00ff00")
+    assert "fontcolor=#00ff00" in override_filt
+
+
+def test_build_animated_caption_filter_fontcolor_override(tmp_path):
+    font = resolve_font_path()
+    default_filt = build_animated_caption_filter("자막", font, str(tmp_path), "scene1")
+    assert "fontcolor=0xFFE600" in default_filt
+
+    override_filt = build_animated_caption_filter("자막", font, str(tmp_path), "scene2", fontcolor="#123456")
+    assert "fontcolor=#123456" in override_filt
+
+
 def test_build_text_block_filter_supports_custom_fontcolor_and_outline(tmp_path):
     filt = build_text_block_filter(
         ["line0.txt"], "font.ttf", bottom_margin=190, fontsize=32,
@@ -315,3 +347,184 @@ def test_build_xfade_filter_complex_two_clips():
     filt, v_label, a_label = build_xfade_filter_complex([5.0, 5.0])
     assert filt.count("xfade=") == 1
     assert v_label == "vout"
+
+
+def test_compute_scene_windows_matches_xfade_offsets():
+    # 캡션 재합성이 쓰는 절대 시간 구간이 실제 크로스페이드 전환 시점(offset)과 어긋나면
+    # 자막이 화면 전환과 안 맞게 뜬다 — build_xfade_filter_complex의 offset과 반드시 같은
+    # 숫자를 내야 한다(타이밍 드리프트가 이 기능의 최대 리스크).
+    durations = [3.0, 4.0, 2.0]
+    filt, _, _ = build_xfade_filter_complex(durations, transition_dur=0.5)
+    windows = compute_scene_windows(durations, [1, 2, 3], transition_dur=0.5)
+
+    assert windows[0] == {"seq": 1, "start_sec": 0.0, "end_sec": 3.0}
+    assert f"offset={windows[1]['start_sec']:.3f}" in filt
+    assert f"offset={windows[2]['start_sec']:.3f}" in filt
+    assert windows[1]["end_sec"] == windows[2]["start_sec"] + 0.5  # 다음 전환 offset과 맞물림
+
+
+def test_compute_scene_windows_single_scene():
+    windows = compute_scene_windows([5.0], [7])
+    assert windows == [{"seq": 7, "start_sec": 0.0, "end_sec": 5.0}]
+
+
+def test_resolve_font_path_for_key_returns_registered_path():
+    assert resolve_font_path_for_key("nanum_gothic") == "assets/fonts/NanumGothic.ttf"
+
+
+def test_resolve_font_path_for_key_falls_back_when_unknown():
+    # 레지스트리에 없는 키는 resolve_font_path()의 기존 폴백 체인으로 넘어가야 한다
+    # (Railway 배포 안전장치가 깨지면 안 됨).
+    assert resolve_font_path_for_key("존재하지-않는-폰트") == resolve_font_path()
+
+
+def test_resolve_font_path_for_key_defaults_when_none():
+    assert resolve_font_path_for_key(None) == resolve_font_path_for_key("nanum_gothic")
+
+
+def _sample_scenes():
+    return [
+        {"seq": 1, "stage": "empathy", "caption": "고민되시죠"},
+        {"seq": 2, "stage": "emotion", "caption": "답답하셨을 거예요"},
+        {"seq": 3, "stage": "problem", "caption": "그냥 포기하게 되죠"},
+        {"seq": 4, "stage": "solution", "caption": "이렇게 해결해요"},
+        {"seq": 5, "stage": "result", "caption": "훨씬 편해졌어요"},
+        {"seq": 6, "stage": "product", "caption": "본문에서 확인하세요"},
+    ]
+
+
+def test_resolve_scene_text_elements_first_scene_gets_hook_only():
+    elements = resolve_scene_text_elements(_sample_scenes())
+    assert elements[1]["texts"] == {"hook": "고민되시죠"}
+    assert elements[1]["is_first"] is True
+
+
+def test_resolve_scene_text_elements_pre_reveal_scene_has_no_sticky_cta():
+    elements = resolve_scene_text_elements(_sample_scenes())
+    assert elements[3]["texts"] == {"caption": "그냥 포기하게 되죠"}  # problem 단계, sticky_cta 없음
+
+
+def test_resolve_scene_text_elements_post_reveal_middle_scene_gets_sticky_cta():
+    elements = resolve_scene_text_elements(_sample_scenes())
+    assert elements[4]["texts"] == {"caption": "이렇게 해결해요", "sticky_cta": "본문에서 확인하세요"}
+
+
+def test_resolve_scene_text_elements_last_scene_has_no_sticky_cta():
+    elements = resolve_scene_text_elements(_sample_scenes())
+    assert elements[6]["texts"] == {"caption": "본문에서 확인하세요"}
+    assert elements[6]["is_last"] is True
+
+
+def test_resolve_scene_text_elements_custom_pre_reveal_stages_override_default():
+    # 기획천재발견형처럼 pre-reveal 구간이 첫 단계뿐인 형식을 흉내낸다 — 기본값(표준 6단계)
+    # 이었다면 sticky_cta가 없었을 problem 단계 씬도, 커스텀 pre_reveal_stages를 넘기면
+    # 상품이 이미 등장한 것으로 취급돼 sticky_cta를 받는다.
+    custom_pre_reveal = frozenset({"empathy"})
+    elements = resolve_scene_text_elements(_sample_scenes(), custom_pre_reveal)
+    assert elements[3]["texts"] == {"caption": "그냥 포기하게 되죠", "sticky_cta": "본문에서 확인하세요"}
+
+
+def test_recomposite_captions_builds_one_enable_gated_block_per_scene(tmp_path, monkeypatch):
+    # ffmpeg 실행 없이 filter_complex 문자열 구성만 검증한다(다른 build_* 테스트와 같은 관례).
+    calls = []
+    monkeypatch.setattr("app.media.render.run_ffmpeg", lambda args: calls.append(args))
+    font = resolve_font_path()
+    scenes = _sample_scenes()
+    timeline = compute_scene_windows([5.0, 5.0, 5.0, 5.0, 5.0, 5.0], [s["seq"] for s in scenes])
+
+    recomposite_captions(
+        "base.mp4", timeline, scenes, "고지문구 테스트", font, str(tmp_path), str(tmp_path / "final.mp4"),
+    )
+
+    assert len(calls) == 1
+    filter_complex = calls[0][calls[0].index("-filter_complex") + 1]
+    assert filter_complex.count("enable=") >= len(scenes)  # 씬마다 최소 1개 + 고지문구
+    assert "-c:a" in calls[0] and "copy" in calls[0]  # 오디오는 재인코딩 없이 복사
+
+
+def test_recomposite_captions_applies_text_override(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr("app.media.render.run_ffmpeg", lambda args: calls.append(args))
+    font = resolve_font_path()
+    scenes = _sample_scenes()
+    timeline = compute_scene_windows([5.0, 5.0, 5.0, 5.0, 5.0, 5.0], [s["seq"] for s in scenes])
+    overrides = {"4": {"caption": {"text": "바뀐 자막", "x": 50, "y": 1400}}}
+
+    recomposite_captions(
+        "base.mp4", timeline, scenes, "고지문구", font, str(tmp_path), str(tmp_path / "final.mp4"),
+        overrides=overrides,
+    )
+
+    filter_complex = calls[0][calls[0].index("-filter_complex") + 1]
+    assert "x=50:" in filter_complex
+    with open(os.path.join(str(tmp_path), "scene4.caption.line0.txt"), encoding="utf-8") as f:
+        assert f.read() == "바뀐 자막"
+
+
+def test_recomposite_captions_applies_font_size_override(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr("app.media.render.run_ffmpeg", lambda args: calls.append(args))
+    font = resolve_font_path()
+    scenes = _sample_scenes()
+    timeline = compute_scene_windows([5.0, 5.0, 5.0, 5.0, 5.0, 5.0], [s["seq"] for s in scenes])
+    overrides = {"4": {"caption": {"font_size": 90}}}
+
+    recomposite_captions(
+        "base.mp4", timeline, scenes, "고지문구", font, str(tmp_path), str(tmp_path / "final.mp4"),
+        overrides=overrides,
+    )
+
+    filter_complex = calls[0][calls[0].index("-filter_complex") + 1]
+    assert "fontsize=90" in filter_complex
+
+
+def test_recomposite_captions_applies_text_color_override(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr("app.media.render.run_ffmpeg", lambda args: calls.append(args))
+    font = resolve_font_path()
+    scenes = _sample_scenes()
+    timeline = compute_scene_windows([5.0, 5.0, 5.0, 5.0, 5.0, 5.0], [s["seq"] for s in scenes])
+    overrides = {"4": {"caption": {"text_color": "#ff00ff"}}}
+
+    recomposite_captions(
+        "base.mp4", timeline, scenes, "고지문구", font, str(tmp_path), str(tmp_path / "final.mp4"),
+        overrides=overrides,
+    )
+
+    filter_complex = calls[0][calls[0].index("-filter_complex") + 1]
+    assert "fontcolor=#ff00ff" in filter_complex
+
+
+def test_recomposite_captions_empty_override_text_suppresses_element(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr("app.media.render.run_ffmpeg", lambda args: calls.append(args))
+    font = resolve_font_path()
+    scenes = _sample_scenes()
+    timeline = compute_scene_windows([5.0, 5.0, 5.0, 5.0, 5.0, 5.0], [s["seq"] for s in scenes])
+    overrides = {"4": {"sticky_cta": {"text": ""}}}
+
+    recomposite_captions(
+        "base.mp4", timeline, scenes, "고지문구", font, str(tmp_path), str(tmp_path / "final.mp4"),
+        overrides=overrides,
+    )
+
+    filter_complex = calls[0][calls[0].index("-filter_complex") + 1]
+    assert "scene4.sticky_cta" not in filter_complex
+
+
+def test_recomposite_captions_custom_pre_reveal_stages_changes_sticky_cta(tmp_path, monkeypatch):
+    # scene3(problem)이 기본값으로는 pre-reveal이라 sticky_cta가 없지만, 커스텀
+    # pre_reveal_stages={"empathy"}를 넘기면 이미 상품이 등장한 것으로 취급돼 생긴다.
+    calls = []
+    monkeypatch.setattr("app.media.render.run_ffmpeg", lambda args: calls.append(args))
+    font = resolve_font_path()
+    scenes = _sample_scenes()
+    timeline = compute_scene_windows([5.0, 5.0, 5.0, 5.0, 5.0, 5.0], [s["seq"] for s in scenes])
+
+    recomposite_captions(
+        "base.mp4", timeline, scenes, "고지문구", font, str(tmp_path), str(tmp_path / "final.mp4"),
+        pre_reveal_stages=frozenset({"empathy"}),
+    )
+
+    filter_complex = calls[0][calls[0].index("-filter_complex") + 1]
+    assert "scene3.sticky_cta" in filter_complex
