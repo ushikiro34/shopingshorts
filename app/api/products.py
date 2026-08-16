@@ -48,7 +48,6 @@ class ManualProductRequest(BaseModel):
 
 class ReviewInput(BaseModel):
     reviews_raw: str
-    rating_summary: str | None = None
 
 
 class NeedsEducationPatch(BaseModel):
@@ -181,11 +180,7 @@ def add_review(product_id: str, payload: ReviewInput):
     client = get_client()
     product = get_product_or_404(client, product_id)
 
-    review_row = {
-        "product_id": product_id,
-        "reviews_raw": payload.reviews_raw,
-        "rating_summary": payload.rating_summary,
-    }
+    review_row = {"product_id": product_id, "reviews_raw": payload.reviews_raw}
     review_result = client.table("reviews").insert(review_row).execute()
 
     keyword_count = count_emotional_keywords(payload.reviews_raw)

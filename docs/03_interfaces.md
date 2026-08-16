@@ -15,13 +15,11 @@ create table products (
   deeplink text,
   category text,
   review_count integer,
-  review_growth_score int check (review_growth_score between 0 and 20),
   price_score int check (price_score between 0 and 10),
-  impulse_score int check (impulse_score between 0 and 15),
-  seasonality_score int check (seasonality_score between 0 and 10),
-  content_fit_score int check (content_fit_score between 0 and 15),  -- 쇼츠 소재 적합성
   story_score int check (story_score between 0 and 10),              -- 공감 스토리 가능성 (리뷰 입력 후 채워짐)
-  total_score int,                       -- 위 6개 합 + review_count 20점 배점
+  total_score int,                       -- review_count(20) + price_score(10) + story_score(10), 최대 40
+  -- Phase 8에서 증가속도/충동구매/계절성/소재적합 4개 항목 삭제(migrations/008) — 실제
+  -- 값을 채우는 경로가 없어 항상 0점이었다(app/discovery/scoring.py 참고).
   needs_education boolean not null default false,  -- 카테고리 키워드 매칭으로 자동 설정, 사람이 재검토/수정 가능
   status text not null default 'discovered',
   created_at timestamptz default now(),
@@ -33,7 +31,7 @@ create table reviews (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null references products(id) on delete cascade,
   reviews_raw text not null,            -- 수동 붙여넣은 원문 (분석 재료로만 사용, 절대 재배포 금지)
-  rating_summary text,
+  -- Phase 9에서 rating_summary 컬럼 삭제(migrations/009) — 관련 UI/로직 전체 제거
   created_at timestamptz default now()
 );
 

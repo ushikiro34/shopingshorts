@@ -49,11 +49,11 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 TTS_PROVIDER = os.getenv("TTS_PROVIDER", "edge")
 EDGE_TTS_VOICE = os.getenv("EDGE_TTS_VOICE", "ko-KR-SunHiNeural")
 
-# 상품 스코어링 — docs/00_project_overview.md의 "충동구매 가능성" 임계값.
-IMPULSE_PRICE_THRESHOLD = 30000
-
-# GET /api/products 기본 노출 임계값 (하루 3편 목표라 70 -> 80으로 상향, overview.md v2.1 참조).
-DEFAULT_MIN_SCORE = 80
+# GET /api/products 기본 노출 임계값. 예전엔 100점 만점에 80점이었는데, 스코어링을
+# 리뷰수/가격/스토리 3항목(최대 40점)만 남기고 정리하면서(사용자 피드백 — 나머지 4항목은
+# 실제로 값이 채워지는 경로가 없어 항상 0점이었다) 같은 선별 강도(80%)를 유지하도록
+# 비율 그대로 낮췄다.
+DEFAULT_MIN_SCORE = 32
 
 DEFAULT_TARGET_PERSONA = "40-50대 여성"
 

@@ -605,7 +605,13 @@ def process_hook_patch_job(job_id: str, client=None, work_root: str = WORK_ROOT_
 
 
 def poll_and_process_once(client=None, work_root: str = WORK_ROOT_DEFAULT) -> str | None:
-    """queued 상태인 render_jobs 1건을 찾아 kind에 맞는 처리 함수로 넘긴다.
+    """queued 상태인 render_jobs 1건을 원자적으로 선점해 kind에 맞는 처리 함수로 넘긴다.
+
+    선점(claim) 없이 SELECT만으로 집어가면, 크론 실행이 겹치는 경우(직전 실행이 아직
+    안 끝났는데 다음 스케줄이 도는 등, run_worker_batch 참조) 같은 job을 두 인스턴스가
+    동시에 처리하는 경쟁 상태가 생긴다. id+status=queued 조건으로 UPDATE해 실제로 행을
+    바꾼 쪽(반환된 data가 있는 쪽)만 처리를 진행하면, 이미 다른 쪽이 선점한 job은
+    자동으로 걸러진다.
 
     처리한 job_id 또는 None을 반환한다.
     """
@@ -622,6 +628,17 @@ def poll_and_process_once(client=None, work_root: str = WORK_ROOT_DEFAULT) -> st
         return None
     job_id = result.data[0]["id"]
     kind = result.data[0].get("kind", "full")
+
+    claim = (
+        active_client.table("render_jobs")
+        .update({"status": "claimed"})
+        .eq("id", job_id)
+        .eq("status", "queued")
+        .execute()
+    )
+    if not claim.data:
+        return None
+
     if kind == "hook_preview":
         process_hook_preview_job(job_id, client=active_client, work_root=work_root)
     elif kind == "hook_patch":
@@ -632,7 +649,7 @@ def poll_and_process_once(client=None, work_root: str = WORK_ROOT_DEFAULT) -> st
 
 
 def run_worker_loop(poll_interval_sec: int = 5, client=None, work_root: str = WORK_ROOT_DEFAULT) -> None:
-    """Railway 등에서 별도 프로세스로 띄우는 폴링 루프 (Phase 4 배포 대상)."""
+    """상시 구동 프로세스로 띄우는 폴링 루프 (로컬 개발용, `python -m app.media.worker`)."""
     active_client = client or get_client()
     while True:
         try:
@@ -643,5 +660,39 @@ def run_worker_loop(poll_interval_sec: int = 5, client=None, work_root: str = WO
             time.sleep(poll_interval_sec)
 
 
+def run_worker_batch(
+    max_duration_sec: int = 240, poll_interval_sec: int = 5, client=None, work_root: str = WORK_ROOT_DEFAULT
+) -> int:
+    """Railway Cron 등 유한 실행 환경용 진입점 — 큐가 비거나 제한 시간을 넘기면 프로세스가 종료된다.
+
+    render-worker를 상시 프로세스로 띄워두면 처리할 job이 없는 유휴 시간에도 계속
+    과금되는 문제(사용자 피드백)가 있어, 스케줄에 맞춰 컨테이너를 짧게 띄웠다 내리는
+    구조로 바꾸기 위해 추가했다. max_duration_sec은 "다음 job을 새로 집어올지" 판단하는
+    기준일 뿐, 이미 시작한 렌더링 하나를 중간에 끊지는 않는다(process_render_job 등은
+    한 번 시작하면 끝까지 실행됨) — 크론 주기보다 렌더링이 길어지는 경우를 대비한
+    선점(claim, poll_and_process_once 참조)과 함께 써야 안전하다.
+
+    처리한 job 개수를 반환한다.
+    """
+    active_client = client or get_client()
+    deadline = time.monotonic() + max_duration_sec
+    processed = 0
+    while time.monotonic() < deadline:
+        try:
+            job_id = poll_and_process_once(client=active_client, work_root=work_root)
+        except Exception:  # noqa: BLE001 — 한 job의 실패로 배치 전체가 죽지 않아야 한다
+            time.sleep(poll_interval_sec)
+            continue
+        if job_id is None:
+            break
+        processed += 1
+    return processed
+
+
 if __name__ == "__main__":
-    run_worker_loop()
+    import sys
+
+    if "--once" in sys.argv:
+        run_worker_batch()
+    else:
+        run_worker_loop()

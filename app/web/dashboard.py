@@ -17,12 +17,8 @@ from app.script.formats import active_tone_choices, get_format
 from app.db import get_client
 from app.discovery.education import detect_needs_education
 from app.discovery.scoring import (
-    MAX_CONTENT_FIT_SCORE,
-    MAX_IMPULSE_SCORE,
     MAX_PRICE_SCORE,
     MAX_REVIEW_COUNT_SCORE,
-    MAX_REVIEW_GROWTH_SCORE,
-    MAX_SEASONALITY_SCORE,
     MAX_STORY_SCORE,
     MAX_TOTAL_SCORE,
     ScoreInputs,
@@ -122,11 +118,7 @@ def _build_score_cells(product: dict) -> list[dict]:
     review_count_score = score_review_count(review_count)
     fields = [
         ("리뷰수", f"{review_count}건", review_count_score, MAX_REVIEW_COUNT_SCORE),
-        ("증가속도", str(product.get("review_growth_score") or 0), product.get("review_growth_score") or 0, MAX_REVIEW_GROWTH_SCORE),
         ("가격", str(product.get("price_score") or 0), product.get("price_score") or 0, MAX_PRICE_SCORE),
-        ("충동구매", str(product.get("impulse_score") or 0), product.get("impulse_score") or 0, MAX_IMPULSE_SCORE),
-        ("계절성", str(product.get("seasonality_score") or 0), product.get("seasonality_score") or 0, MAX_SEASONALITY_SCORE),
-        ("소재적합", str(product.get("content_fit_score") or 0), product.get("content_fit_score") or 0, MAX_CONTENT_FIT_SCORE),
         ("스토리", str(product.get("story_score") or 0), product.get("story_score") or 0, MAX_STORY_SCORE),
     ]
     return [
@@ -545,7 +537,6 @@ def discover_analyze(
     request: Request,
     product_id: str,
     reviews_raw: str = Form(...),
-    rating_summary: str = Form(""),
     needs_education: str = Form(None),
     deeplink: str = Form(""),
     category: str = Form(""),
@@ -554,9 +545,7 @@ def discover_analyze(
     client = get_client()
     product = client.table("products").select("*").eq("id", product_id).execute().data[0]
 
-    client.table("reviews").insert(
-        {"product_id": product_id, "reviews_raw": reviews_raw, "rating_summary": rating_summary}
-    ).execute()
+    client.table("reviews").insert({"product_id": product_id, "reviews_raw": reviews_raw}).execute()
 
     keyword_count = count_emotional_keywords(reviews_raw)
     new_story_score = score_story(keyword_count)
@@ -610,6 +599,7 @@ def scripts_tab(request: Request, selected: str | None = None, view: str = "list
     )
     selected_product = None
     latest_script = None
+    tone_history = []
     if selected:
         found = [p for p in products if p["id"] == selected]
         if found:
@@ -625,11 +615,20 @@ def scripts_tab(request: Request, selected: str | None = None, view: str = "list
                 .select("*")
                 .eq("product_id", selected)
                 .order("created_at", desc=True)
-                .limit(1)
                 .execute()
                 .data
             )
             latest_script = scripts[0] if scripts else None
+            # 현재 표시 중인 최신 대본을 제외한 과거 생성분 — "생성한 톤" 기록을 목록으로
+            # 보여주고 골라서 되돌리거나 개별 삭제할 수 있게 한다(사용자 피드백).
+            tone_history = [
+                {
+                    "id": s["id"],
+                    "tone": s["tone"],
+                    "time": (s["created_at"] or "")[:16].replace("T", " "),
+                }
+                for s in scripts[1:]
+            ]
     ctx.update(
         {
             "active": "script",
@@ -638,11 +637,105 @@ def scripts_tab(request: Request, selected: str | None = None, view: str = "list
             "selected": selected_product,
             "script": latest_script,
             "tones": active_tone_choices(),
+            "tone_history": tone_history,
             "format": get_format(latest_script["tone"]) if latest_script else None,
             "view": view if selected_product else "list",
         }
     )
     return templates.TemplateResponse("tab_script.html", ctx)
+
+
+@router.get("/scripts/check-product-name")
+def scripts_check_product_name(product_name: str):
+    """빠른 시작 폼에서 같은 이름의 상품이 이미 있는지 미리 물어보기 위한 조회 (JS fetch용).
+
+    사용자 피드백(2026-08-17): 상품명을 착각해 중복 등록하는 걸 막고 싶다 — 등록 자체를
+    막지는 않고, 프론트에서 confirm() 경고만 띄운다.
+    """
+    client = get_client()
+    result = (
+        client.table("products")
+        .select("id")
+        .eq("product_name", product_name)
+        .limit(1)
+        .execute()
+    )
+    return JSONResponse({"exists": bool(result.data)})
+
+
+@router.post("/scripts/quick-start")
+def scripts_quick_start(
+    request: Request,
+    product_name: str = Form(...),
+    category: str = Form(""),
+    needs_education: str = Form(None),
+    tone: str = Form(...),
+):
+    """상품선택(발굴)의 리뷰입력/AI분석 단계를 건너뛰고, 상품명·카테고리·사실설명 여부만
+    입력받아 빈 대본 틀을 만든 뒤 곧바로 대본 편집 화면으로 보낸다.
+
+    AI 리뷰분석(analyze_reviews)도 AI 대본생성(generate_script)도 거치지 않는다 —
+    나레이션/화면연출을 전부 사람이 직접 타이핑해서 채우고 싶다는 요청(사용자 피드백,
+    2026-08-17). 편집 자체는 기존 "수정" 버튼(scripts_edit)이 그대로 처리하므로, 여기서는
+    그 UI가 기대하는 모양(형식별 structure/scenes)만 빈 값으로 만들어둔다.
+    """
+    if tone not in active_tone_choices():
+        raise HTTPException(status_code=400, detail=f"tone은 {active_tone_choices()} 중 하나여야 합니다.")
+
+    client = get_client()
+
+    detected_needs_education = detect_needs_education(category or None, product_name)
+    final_needs_education = (
+        (needs_education == "on") if needs_education is not None else detected_needs_education
+    )
+    breakdown = calculate_score(ScoreInputs())
+    row = {
+        "product_name": product_name,
+        "needs_education": final_needs_education,
+        "status": "scored",
+        **breakdown.as_dict(),
+    }
+    if category.strip():
+        row["category"] = category.strip()
+
+    from app.discovery.naver_search import NaverSearchError, search_product_image
+
+    try:
+        image_result = search_product_image(product_name)
+        if image_result and image_result.image:
+            row["image_urls"] = [image_result.image]
+    except NaverSearchError:
+        pass
+
+    product_id = client.table("products").insert(row).execute().data[0]["id"]
+
+    fmt = get_format(tone)
+    script_json = {
+        "structure": {stage.key: "" for stage in fmt.stages},
+        "educational_note": {"included": final_needs_education, "text": ""},
+        "tone": tone,
+        "scenes": [
+            {
+                "seq": i + 1,
+                "stage": stage.key,
+                "narration": "",
+                "caption": "",
+                "visual": "",
+                "image_index": 0,
+                "duration_sec": stage.seconds,
+            }
+            for i, stage in enumerate(fmt.stages)
+        ],
+        "disclosure": PARTNERS_DISCLOSURE,
+        "estimated_duration_sec": sum(stage.seconds for stage in fmt.stages),
+        "youtube": {"title": product_name, "description": "", "tags": []},
+    }
+    client.table("scripts").insert({"product_id": product_id, "tone": tone, "script_json": script_json}).execute()
+    client.table("products").update({"status": "script_generated"}).eq("id", product_id).execute()
+
+    return RedirectResponse(
+        f"/scripts?selected={product_id}&view=detail&toast=등록+완료!+대본을+직접+작성해보세요", status_code=302
+    )
 
 
 @router.post("/scripts/{product_id}/generate")
@@ -693,6 +786,33 @@ def scripts_generate(request: Request, product_id: str, tone: str = Form(...)):
     return RedirectResponse(f"/scripts?selected={product_id}&view=detail&toast={tone}+톤으로+다시+생성했어요", status_code=302)
 
 
+@router.post("/scripts/{product_id}/revert")
+def scripts_revert(product_id: str, script_id: str = Form(...)):
+    """과거에 생성했던 톤으로 되돌린다 — 그 대본 내용을 그대로 복사해 새 레코드로 다시
+    insert해서 최신 대본으로 만든다(append-only 이력을 그대로 유지, 사용자 피드백)."""
+    client = get_client()
+    old = client.table("scripts").select("*").eq("id", script_id).eq("product_id", product_id).execute().data[0]
+    client.table("scripts").insert(
+        {
+            "product_id": product_id,
+            "analysis_id": old["analysis_id"],
+            "tone": old["tone"],
+            "script_json": old["script_json"],
+        }
+    ).execute()
+    return RedirectResponse(f"/scripts?selected={product_id}&view=detail&toast={old['tone']}+톤으로+되돌렸어요", status_code=302)
+
+
+@router.post("/scripts/{script_id}/delete")
+def scripts_delete_history(script_id: str, product_id: str = Form(...)):
+    """"이전에 생성한 톤" 목록에서 개별 항목을 삭제한다(사용자 피드백). 목록 자체가 현재
+    최신 대본은 제외하고 보여주므로, 여기서 지울 수 있는 건 항상 과거분뿐이다. 되돌릴 수
+    없어 프론트에서 confirm()을 거친다."""
+    client = get_client()
+    client.table("scripts").delete().eq("id", script_id).eq("product_id", product_id).execute()
+    return RedirectResponse(f"/scripts?selected={product_id}&view=detail&toast=삭제했어요", status_code=302)
+
+
 @router.post("/scripts/{script_id}/edit")
 async def scripts_edit(request: Request, script_id: str):
     form = await request.form()
@@ -707,12 +827,16 @@ async def scripts_edit(request: Request, script_id: str):
     # 서버가 조회한 이 대본 형식의 stage 목록만 신뢰한다 — 클라이언트가 임의 필드명을
     # 보내도 구조에 반영되지 않는다.
     script_json["structure"] = {key: form.get(f"stage__{key}", "") for key in fmt.stage_keys}
-    # 씬별 화면연출(visual) 편집 — 서버가 이미 알고 있는 seq만 신뢰해서 그 scene의 값만
-    # 갱신한다(사용자 피드백: 대본작성 시 씬별 화면 컨셉을 직접 수정하고 싶다).
+    # 씬별 화면연출(visual)/자막(caption) 편집 — 서버가 이미 알고 있는 seq만 신뢰해서 그
+    # scene의 값만 갱신한다(사용자 피드백: 대본작성 시 씬별 화면 컨셉·자막을 직접 수정하고
+    # 싶다 — 특히 상품선택 없이 빈 대본으로 시작한 경우 자막도 사람이 직접 채워야 한다).
     for scene in script_json.get("scenes") or []:
-        field_name = f"visual__{scene['seq']}"
-        if field_name in form:
-            scene["visual"] = form.get(field_name, scene.get("visual", ""))
+        visual_field = f"visual__{scene['seq']}"
+        if visual_field in form:
+            scene["visual"] = form.get(visual_field, scene.get("visual", ""))
+        caption_field = f"caption__{scene['seq']}"
+        if caption_field in form:
+            scene["caption"] = form.get(caption_field, scene.get("caption", ""))
     client.table("scripts").update(
         {"script_json": script_json, "version": existing["version"] + 1}
     ).eq("id", script_id).execute()
@@ -925,6 +1049,7 @@ def prompts_confirm(request: Request, script_id: str, product_id: str = Form(...
 # 한글 라벨로 바꿔서 보여준다(사용자 피드백: 진행 상태를 더 명확히 보여달라).
 _RENDER_STATUS_LABELS = {
     "queued": "대기 중",
+    "claimed": "대기 중",
     "generating_images": "이미지 생성 중",
     "generating_video": "후킹 영상 생성 중",
     "generating_audio": "음성 생성 중",
@@ -1414,7 +1539,7 @@ def publish_now(request: Request, upload_queue_id: str):
     client.table("upload_queue").update(
         {"status": "published", "youtube_video_id": video_id, "published_at": _now_iso()}
     ).eq("id", upload_queue_id).execute()
-    return RedirectResponse("/publish?toast=게시했어요!+🎉", status_code=302)
+    return RedirectResponse("/publish?toast=업로드했어요!+유튜브+스튜디오에서+공개하세요+🎉", status_code=302)
 
 
 # --- 정책 알림 목록 ---

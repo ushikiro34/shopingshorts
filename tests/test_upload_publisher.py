@@ -17,12 +17,14 @@ class _FakeResponse:
 class _FakeHttpxClient:
     def __init__(self):
         self.calls = []
+        self.upload_init_json = None
 
     def post(self, url, headers=None, json=None, data=None, content=None):
         self.calls.append(("POST", url))
         if url == publisher.TOKEN_URL:
             return _FakeResponse(200, {"access_token": "fake-access-token"})
         if url.startswith(publisher.UPLOAD_URL):
+            self.upload_init_json = json
             return _FakeResponse(200, headers={"Location": "https://upload.example/session123"})
         if url.startswith(publisher.THUMBNAIL_URL):
             return _FakeResponse(200, {})
@@ -57,6 +59,12 @@ def test_publish_video_returns_video_id(tmp_path):
     assert publisher.TOKEN_URL in urls_called
     assert any(url.startswith(publisher.UPLOAD_URL) for url in urls_called)
     assert any(url.startswith(publisher.THUMBNAIL_URL) for url in urls_called)
+    # AGENTS.md 절대 규칙 4 — 실제 공개는 유튜브 스튜디오에서 사람이 별도로 진행해야 하므로
+    # 이 앱은 항상 비공개로만 업로드해야 한다.
+    assert client.upload_init_json["status"]["privacyStatus"] == "private"
+    # AGENTS.md 절대 규칙 4 — 실제 공개는 유튜브 스튜디오에서 사람이 별도로 진행해야 하므로
+    # 이 앱은 항상 비공개로만 업로드해야 한다.
+    assert client.upload_init_json["status"]["privacyStatus"] == "private"
 
 
 def test_publish_video_without_thumbnail_skips_thumbnail_call(tmp_path):

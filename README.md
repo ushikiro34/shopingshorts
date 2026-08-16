@@ -56,9 +56,15 @@ uvicorn app.main:app --reload
 렌더링(Phase 3)과 게시 상태 전환(Phase 4)은 별도 워커 프로세스가 각각 폴링해 처리한다:
 
 ```bash
-python -m app.media.worker         # render_jobs 폴링 (이미지/TTS/FFmpeg)
+python -m app.media.worker         # render_jobs 폴링 (이미지/TTS/FFmpeg), 상시 구동(로컬 개발용)
+python -m app.media.worker --once  # 큐가 비거나 제한 시간(기본 240초)을 넘기면 종료 — Railway Cron 배포용
 python -m app.upload.queue_worker  # upload_queue 냉각기간 경과 감지 (외부 API 호출 없음)
 ```
+
+`--once`는 render-worker를 상시 프로세스로 띄워두면 처리할 job이 없는 유휴 시간에도 계속
+과금되는 문제 때문에 추가했다 — 처리할 render_job이 없으면 즉시 종료되므로 Railway Cron
+Job(예: `*/5 * * * *`)으로 스케줄해 필요할 때만 컨테이너를 띄우는 용도다. 상세 배포 구성은
+`docs/runbook.md` 참조.
 
 - 헬스체크: `GET http://localhost:8000/health`
 - API 문서: `http://localhost:8000/docs`
@@ -93,7 +99,7 @@ Railway 등에 배포할 때는 같은 이미지로 서비스 3개(web/render-wo
 | POST | `/api/render-jobs/{id}/queue-upload` | body: `{cooldown_minutes?}`(기본 240). `upload_queue`에 `pending_review`로 enqueue, status `queued_for_upload` |
 | GET | `/api/upload-queue?status=` | 게시 큐 목록 |
 | POST | `/api/upload-queue/{id}/cancel` | 언제든 취소 → `canceled` |
-| POST | `/api/upload-queue/{id}/publish` | **사람이 명시적으로 호출.** `ready_to_publish`가 아니면 403. 성공 시 `published`+`youtube_video_id` |
+| POST | `/api/upload-queue/{id}/publish` | **사람이 명시적으로 호출.** `ready_to_publish`가 아니면 403. 항상 `privacyStatus=private`로 업로드하며, 성공 시 `published`+`youtube_video_id` (실제 공개/예약은 유튜브 스튜디오에서 별도 진행) |
 | POST | `/api/policy-check/run` | `MONITORED_POLICIES` fetch+해시비교, 변경 시 `policy_alerts` 생성. 헤더 `X-Policy-Check-Secret` 필요(설정 시) |
 | GET | `/api/policy-alerts?reviewed=` | 정책 변경 알림 목록 |
 | POST | `/api/policy-alerts/{id}/review` | body: `{note?}` → `reviewed=true` |
@@ -144,6 +150,10 @@ pytest tests/ -v
 `app/upload/queue_worker.py`(내부 상태 전환만, 외부 API 미호출)와 `app/upload/publisher.py`
 (실제 유튜브 업로드, `/publish` 엔드포인트에서만 호출)로 분리되어 있다. 냉각기간(기본 240분) +
 사람의 명시적 클릭 + 대시보드 확인 다이얼로그, 3중 안전장치 — 상세 운영법은 `docs/runbook.md`.
+
+업로드는 항상 `privacyStatus=private`로 이루어진다(2026-08-17~) — 이 앱은 검토를 마친 영상을
+유튜브에 올리는 것까지만 책임지고, 실제 전체공개 전환/예약은 사람이 유튜브 스튜디오에서 직접
+진행한다. 상시 서버를 띄워두지 않고 작업할 때만 로컬에서 켜는 운영 방식과 맞춘 결정이다.
 
 ## 제외 범위 (Phase 1~4가 아님)
 

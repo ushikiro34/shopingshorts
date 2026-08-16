@@ -16,6 +16,20 @@
       <div class="app-body">
         <div class="body-top">
           <div class="container">
+            {% set tab_labels = {
+              "home": ("대시보드", "오늘의 파이프라인 현황을 한눈에 확인해요"),
+              "discover": ("상품선택", "쿠팡에서 판매할 상품을 찾고 후기를 분석해요"),
+              "script": ("대본작성", "분석된 후기를 바탕으로 쇼츠 대본을 만들어요"),
+              "prompts": ("프롬프트 확인", "후킹/장면 프롬프트를 확인하고 확정해요"),
+              "media": ("미디어제작", "영상을 렌더링하고 캡션을 편집해요"),
+              "publish": ("게시검토", "완성된 영상을 검수하고 게시해요"),
+            } %}
+            {% if tab_labels.get(active) %}
+            <div class="main-header-row">
+              <h1 class="main-header-title">{{ tab_labels[active][0] }}</h1>
+              <span class="main-header-desc">{{ tab_labels[active][1] }}</span>
+            </div>
+            {% endif %}
             {% if policy_alert_count and policy_alert_count > 0 %}
             <div class="policy-banner">
               <span>⚠️ 미검토 정책 변경 알림 {{ policy_alert_count }}건</span>

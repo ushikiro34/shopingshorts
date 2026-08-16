@@ -4,6 +4,47 @@
 {% block content %}
 <div class="three-col" data-view="{{ view }}">
   <div class="panel list-panel">
+    <div style="margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--border);">
+      <button type="button" class="btn btn-ghost" id="quick-start-toggle" style="width:100%;">+ 상품선택 없이 대본 빠르게 시작</button>
+      <form method="post" action="/scripts/quick-start" id="quick-start-form" hidden style="margin-top:10px;">
+        <div style="display:grid; grid-template-columns:70px 1fr; gap:8px 10px; align-items:center;">
+          <label style="font-size:13px; color:var(--text-dim); font-weight:600;">상품명</label>
+          <input type="text" name="product_name" placeholder="상품명을 입력해주세요" required style="height:32px; padding:0 12px; font-size:13px;">
+
+          <label style="font-size:13px; color:var(--text-dim); font-weight:600;">카테고리</label>
+          <select name="category" class="category-select">
+            <option value="">카테고리 선택</option>
+            <option value="패션의류">패션의류</option>
+            <option value="뷰티">뷰티</option>
+            <option value="식품">식품</option>
+            <option value="생활용품">생활용품</option>
+            <option value="가전디지털">가전디지털</option>
+            <option value="스포츠레저">스포츠레저</option>
+            <option value="유아동">유아동</option>
+            <option value="반려동물">반려동물</option>
+            <option value="도서문구">도서문구</option>
+            <option value="기타">기타</option>
+          </select>
+
+          <label style="font-size:13px; color:var(--text-dim); font-weight:600;">형식(톤)</label>
+          <select name="tone" style="width:100%;padding:8px 10px;font-size:14px;border-radius:var(--radius);border:1px solid var(--border);background:var(--card);color:var(--text);">
+            {% for t in tones %}
+            <option value="{{ t }}">{{ t }}</option>
+            {% endfor %}
+          </select>
+
+          <label style="font-size:13px; color:var(--text-dim); font-weight:600;">사실설명</label>
+          <label class="education-toggle" style="padding:6px 10px; gap:6px; font-size:13px; width:fit-content;">
+            <input type="checkbox" name="needs_education" style="width:16px; height:16px;">
+            <span>필요한 경우 체크</span>
+          </label>
+        </div>
+        <button class="btn btn-primary" type="submit" id="quick-start-submit-btn" style="width:100%; margin-top:12px;">
+          <span class="btn-label">등록하고 직접 작성 시작</span>
+          <span class="btn-spinner" hidden></span>
+        </button>
+      </form>
+    </div>
     {% if products %}
     {% for p in products %}
     {% call list_row(
@@ -39,30 +80,7 @@
     </div>
     {% endif %}
 
-    {% set icon_svg = {
-    'empathy': '
-    <path
-      d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-    ',
-    'emotion': '
-    <path
-      d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-    ',
-    'problem': '
-    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-    <line x1="12" y1="9" x2="12" y2="13" />
-    <line x1="12" y1="17" x2="12.01" y2="17" />',
-    'solution': '
-    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-    <polyline points="22 4 12 14.01 9 11.01" />',
-    'result': '
-    <path d="M23 6l-9.5 9.5-5-5L1 18" />
-    <path d="M17 6h6v6" />',
-    'product': '
-    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
-    <line x1="3" y1="6" x2="21" y2="6" />
-    <path d="M16 10a4 4 0 0 1-8 0" />',
-    } %}
+    {% set stage_emojis = ['①', '②', '③', '④', '⑤', '⑥'] %}
     <form id="script-edit-form" method="post" action="/scripts/{{ script.id }}/edit">
       <input type="hidden" name="product_id" value="{{ selected.id }}">
       <div class="script-card-list">
@@ -70,12 +88,7 @@
         {% set is_long_stage = loop.revindex <= 2 %} {% set stage_text=script.script_json.structure.get(stage.key, "" )
           %} <div class="script-card {{ 'script-card-8' if is_long_stage else 'script-card-4' }}">
           <div class="script-card-label">
-            {% if stage.key in icon_svg %}
-            <svg class="script-card-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-              stroke-linecap="round" stroke-linejoin="round">{{ icon_svg[stage.key] | safe }}</svg>
-            {% else %}
-            <span class="script-card-badge">{{ loop.index }}</span>
-            {% endif %}
+            <span class="script-card-badge">{{ stage_emojis[loop.index0] }}</span>
             {{ stage.label.replace(' ', '<br>') | safe }}
           </div>
           {% set stage_scenes = script.script_json.scenes | selectattr('stage', 'equalto', stage.key) | list %}
@@ -115,6 +128,10 @@
             </div>
             {% for s in stage_scenes %}
             <div class="script-cell-field">
+              <span class="script-cell-label">자막 (씬 {{ s.seq }})</span>
+              <textarea name="caption__{{ s.seq }}" class="script-cell" rows="2" readonly>{{ s.caption }}</textarea>
+            </div>
+            <div class="script-cell-field">
               <span class="script-cell-label">화면연출 (씬 {{ s.seq }})</span>
               <textarea name="visual__{{ s.seq }}" class="script-cell" rows="2" readonly>{{ s.visual }}</textarea>
             </div>
@@ -136,7 +153,7 @@
   <div class="script-generate-section">
     <form method="post" action="/scripts/{{ selected.id if selected else '' }}/generate" id="script-generate-form">
       <div class="card-field">
-        <label>톤 선택</label>
+        <label><span class="pill pill-accent">톤 선택</span></label>
         <select name="tone"
           style="width:100%;padding:8px;border-radius:var(--radius);border:1px solid var(--border);background:var(--card);color:var(--text);"
           {% if not selected %}disabled{% endif %}>
@@ -150,6 +167,41 @@
         <span class="btn-spinner" hidden></span>
       </button>
     </form>
+    {% if tone_history %}
+    <form method="post" action="/scripts/{{ selected.id if selected else '' }}/revert" id="script-revert-form"
+      class="script-revert-form">
+      <div class="card-field">
+        <label><span class="pill pill-accent">이전에 생성한 톤으로 되돌리기</span></label>
+        <div class="tone-dropdown" id="tone-dropdown">
+          <button type="button" class="tone-dropdown-toggle" id="tone-dropdown-toggle">
+            <span id="tone-dropdown-label">{{ tone_history[0].tone }} | {{ tone_history[0].time }}</span>
+            <span class="tone-dropdown-chevron">⌄</span>
+          </button>
+          <input type="hidden" name="script_id" form="script-revert-form" id="tone-dropdown-value"
+            value="{{ tone_history[0].id }}">
+          <div class="tone-dropdown-menu" id="tone-dropdown-menu" hidden>
+            {% for h in tone_history %}
+            <div class="tone-dropdown-row" data-id="{{ h.id }}" data-label="{{ h.tone }} | {{ h.time }}">
+              <div class="tone-dropdown-text">
+                <span class="tone-dropdown-tone">{{ h.tone }}</span>
+                <span class="tone-dropdown-time">{{ h.time }}</span>
+              </div>
+              <button type="button" class="list-delete-btn tone-dropdown-delete" data-script-id="{{ h.id }}"
+                title="삭제" aria-label="삭제">✕</button>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-ghost" type="submit" id="script-revert-btn">
+        <span class="btn-label">선택한 톤으로 되돌리기</span>
+        <span class="btn-spinner" hidden></span>
+      </button>
+    </form>
+    <form method="post" id="tone-history-delete-form" action="/scripts//delete" hidden>
+      <input type="hidden" name="product_id" value="{{ selected.id if selected else '' }}">
+    </form>
+    {% endif %}
   </div>
   <div class="script-approve-section">
     <button class="btn btn-ghost" type="submit" form="script-edit-form" id="script-edit-btn" {% if not script
@@ -174,6 +226,43 @@
   // 화면연출 textarea 여러 개)으로 전환한다(네이티브 textarea는 내부 텍스트를 세로로
   // 가운데 정렬할 CSS 방법이 없어 표시용/편집용을 분리했다).
   document.addEventListener("DOMContentLoaded", function () {
+    var quickStartToggle = document.getElementById("quick-start-toggle");
+    var quickStartForm = document.getElementById("quick-start-form");
+    if (quickStartToggle && quickStartForm) {
+      quickStartToggle.addEventListener("click", function () { quickStartForm.hidden = !quickStartForm.hidden; });
+    }
+    var quickStartBtn = document.getElementById("quick-start-submit-btn");
+    if (quickStartForm && quickStartBtn) {
+      // 상품명 착각으로 인한 중복 등록을 막기 위해, 제출 전에 같은 이름의 상품이 이미
+      // 있는지 확인하고 있으면 confirm()으로 한 번 더 물어본다(사용자 피드백,
+      // 2026-08-17). 등록 자체를 막지는 않고 경고만 한다.
+      quickStartForm.addEventListener("submit", function (e) {
+        if (quickStartForm.dataset.confirmed === "1") {
+          quickStartBtn.disabled = true;
+          quickStartBtn.querySelector(".btn-label").textContent = "등록하는 중...";
+          quickStartBtn.querySelector(".btn-spinner").hidden = false;
+          return;
+        }
+        e.preventDefault();
+        var name = quickStartForm.querySelector('input[name="product_name"]').value.trim();
+        if (!name) {
+          quickStartForm.reportValidity();
+          return;
+        }
+        fetch("/scripts/check-product-name?product_name=" + encodeURIComponent(name))
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (data.exists && !confirm("이미 같은 이름의 상품이 있어요. 그래도 등록할까요?")) return;
+            quickStartForm.dataset.confirmed = "1";
+            quickStartForm.requestSubmit();
+          })
+          .catch(function () {
+            quickStartForm.dataset.confirmed = "1";
+            quickStartForm.requestSubmit();
+          });
+      });
+    }
+
     function wireSubmitSpinner(formId, btnId, loadingText) {
       var form = document.getElementById(formId);
       var btn = document.getElementById(btnId);
@@ -187,7 +276,45 @@
       });
     }
     wireSubmitSpinner("script-generate-form", "script-generate-btn", "생성하는 중...");
+    wireSubmitSpinner("script-revert-form", "script-revert-btn", "되돌리는 중...");
     wireSubmitSpinner("script-approve-form", "script-approve-btn", "승인하는 중...");
+
+    // 톤 히스토리 커스텀 드롭다운 — 네이티브 select의 option은 글자만 담을 수 있어
+    // 줄마다 삭제 버튼을 넣을 수 없다(브라우저 제약). 그래서 닫혔을 땐 select처럼 보이고
+    // 펼치면 "톤 | 시간 | 삭제버튼" 한 줄씩 나오는 커스텀 목록으로 만든다(사용자 피드백).
+    var toneDropdown = document.getElementById("tone-dropdown");
+    if (toneDropdown) {
+      var toneToggle = document.getElementById("tone-dropdown-toggle");
+      var toneMenu = document.getElementById("tone-dropdown-menu");
+      var toneLabel = document.getElementById("tone-dropdown-label");
+      var toneValue = document.getElementById("tone-dropdown-value");
+      var toneDeleteForm = document.getElementById("tone-history-delete-form");
+
+      toneToggle.addEventListener("click", function () {
+        toneMenu.hidden = !toneMenu.hidden;
+      });
+
+      toneMenu.querySelectorAll(".tone-dropdown-row").forEach(function (row) {
+        row.addEventListener("click", function () {
+          toneValue.value = row.dataset.id;
+          toneLabel.textContent = row.dataset.label;
+          toneMenu.hidden = true;
+        });
+      });
+
+      toneMenu.querySelectorAll(".tone-dropdown-delete").forEach(function (btn) {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          if (!confirm("정말 삭제할까요? 되돌릴 수 없어요")) return;
+          toneDeleteForm.action = "/scripts/" + btn.dataset.scriptId + "/delete";
+          toneDeleteForm.submit();
+        });
+      });
+
+      document.addEventListener("click", function (e) {
+        if (!toneDropdown.contains(e.target)) toneMenu.hidden = true;
+      });
+    }
 
     var editBtn = document.getElementById("script-edit-btn");
     var editForm = document.getElementById("script-edit-form");

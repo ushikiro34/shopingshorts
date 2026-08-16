@@ -2,6 +2,12 @@
 
 AGENTS.md 절대 규칙 4: 이 모듈의 함수는 오직 /publish 엔드포인트가 호출됐을 때만
 실행된다. 타이머·워커가 이 함수를 호출하는 코드 경로는 절대 만들지 않는다.
+
+privacyStatus는 항상 "private"로 업로드한다(2026-08-17, 사용자 피드백) — 이 앱을
+상시 서버에 띄워두지 않고 작업할 때만 로컬에서 켜서 쓰는 운영 방식으로 바꾸면서,
+실제 전체공개 전환/예약은 이 앱이 아니라 유튜브 스튜디오에서 사람이 직접 하도록
+분리했다. 이 앱의 책임은 "검토를 마친 영상을 유튜브에 올리는 것"까지고, 언제
+공개할지는 유튜브 스튜디오의 예약 기능이 담당한다.
 """
 
 from __future__ import annotations
@@ -51,7 +57,7 @@ def publish_video(
 
         metadata = {
             "snippet": {"title": title, "description": description, "categoryId": "22"},
-            "status": {"privacyStatus": "public", "selfDeclaredMadeForKids": False},
+            "status": {"privacyStatus": "private", "selfDeclaredMadeForKids": False},
         }
         init_res = active_client.post(
             f"{UPLOAD_URL}?uploadType=resumable&part=snippet,status",

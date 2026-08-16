@@ -81,22 +81,18 @@
             {% endif %}
           </div>
         </div>
-
+        <!--
         <hr class="section-divider">
-
+        
         <div class="card-field">
           <div class="section-label-row">
-            <label class="section-title">점수 breakdown</label>
+            <label class="section-title">점수 산정</label>
             <span class="info-icon" tabindex="0">?
               <span class="info-tooltip score-tooltip">
                 <ul>
-                  <li><strong>리뷰수</strong> — 리뷰가 많을수록 검증된 상품 (최대 20점)</li>
-                  <li><strong>증가속도</strong> — 최근 30일 리뷰 비중으로 보는 요즘 인기 정도 (최대 20점)</li>
-                  <li><strong>가격</strong> — 저렴할수록 가점, 충동구매 임계값 기준 (최대 10점)</li>
-                  <li><strong>충동구매</strong> — 저가 + 생활 소모품이면 즉시 구매 가능성이 높음 (최대 15점)</li>
-                  <li><strong>계절성</strong> — 지금 시즌과 잘 맞는 상품인지 (최대 10점)</li>
-                  <li><strong>소재적합</strong> — 쇼츠 영상으로 시각적으로 보여줄 거리가 있는지 (최대 15점)</li>
-                  <li><strong>스토리</strong> — 아래 후기에서 뽑은 공감 키워드 개수로 계산 (최대 10점)</li>
+                  <li><strong>리뷰수</strong> — 쿠팡에서 조회된 리뷰 수</li>
+                  <li><strong>가격</strong> — 저렴할수록 가점</li>
+                  <li><strong>스토리</strong> — 아래 후기에서 뽑은 공감 키워드 개수로 계산</li>
                 </ul>
               </span>
             </span>
@@ -108,34 +104,32 @@
               <span class="score-cell-value">{{ cell.display }}</span>
             </div>
             {% endfor %}
-            <div class="score-cell score-cell-total">
-              <span class="score-cell-label">총점</span>
-              <span class="score-cell-value">{{ selected.total_score or 0 }}점</span>
-            </div>
           </div>
         </div>
-
+        */-->
         <hr class="section-divider">
 
         <div class="card-field">
-          <label>
+          <label class="education-toggle">
             <input type="checkbox" name="needs_education" {% if selected.needs_education %}checked{% endif %}>
-            사실설명(educational_note)이 필요한 상품이에요
+            <span>사실설명(educational_note)이 필요한 상품일 경우 선택해주세요</span>
           </label>
         </div>
+
+        <div class="section-label-row">
+          <label class="section-title">리뷰 붙여넣기 (어느 마켓이든 괜찮아요)</label>
+          <span class="info-icon" tabindex="0">?
+            <span class="info-tooltip">
+              후기를 붙여넣으면 AI가 공감 키워드를 뽑아 위 스토리 점수를 다시 계산하고, 대본에 녹여낼 핵심 감정 포인트도 찾아내요. 후기가 없으면 스토리 점수를 매길 수도, 대본을 만들 수도
+              없어서
+              필수 입력이에요.
+            </span>
+          </span>
+        </div>
+
         <div class="card-field">
           <textarea name="reviews_raw" rows="10" class="fixed-textarea" placeholder="상품 후기를 여기에 붙여넣어주세요"
             required>{{ latest_review_raw }}</textarea>
-          <div class="section-label-row">
-            <label class="section-title">리뷰 붙여넣기 (어느 마켓이든 괜찮아요)</label>
-            <span class="info-icon" tabindex="0">?
-              <span class="info-tooltip">
-                후기를 붙여넣으면 AI가 공감 키워드를 뽑아 위 스토리 점수를 다시 계산하고, 대본에 녹여낼 핵심 감정 포인트도 찾아내요. 후기가 없으면 스토리 점수를 매길 수도, 대본을 만들 수도
-                없어서
-                필수 입력이에요.
-              </span>
-            </span>
-          </div>
         </div>
         <script>
           document.addEventListener("DOMContentLoaded", function () {
@@ -186,41 +180,43 @@
             </label>
             <input type="file" id="review-screenshot-input" accept="image/*" hidden>
           </div>
-
-          <div class="section-label-row">
-            <label class="section-title">상품 이미지</label>
-            <span class="info-icon" tabindex="0">?
-              <span class="info-tooltip">
-                영상 씬마다 이 이미지들을 순서대로 재사용해요. 여러 장 등록해두면 영상이 한 사진만 반복되지 않아요.
+          <div class="image-section">
+            <div class="section-label-row">
+              <label class="section-title section-title-lg">상품 이미지</label>
+              <span class="info-icon" tabindex="0">?
+                <span class="info-tooltip">
+                  영상 씬마다 이 이미지들을 순서대로 재사용해요. 여러 장 등록해두면 영상이 한 사진만 반복되지 않아요.
+                </span>
               </span>
-            </span>
-          </div>
-          <div class="image-gallery">
-            {% for url in (selected.image_urls or []) %}
-            <div class="image-gallery-item">
-              <img src="{{ url }}" alt="">
-              <form method="post" action="/discover/{{ selected.id }}/images/remove">
-                <input type="hidden" name="image_url" value="{{ url }}">
-                <button type="submit" class="image-remove-btn" title="삭제">×</button>
+              <button type="button" class="btn btn-ghost btn-sm btn-naver image-action-btn-first"
+                id="naver-image-search-btn" data-keyword="{{ selected.product_name or '' }}">
+                <span class="btn-label">네이버에서 더 찾기</span>
+                <span class="btn-spinner" hidden></span>
+              </button>
+              <form method="post" action="/discover/{{ selected.id }}/images/upload" enctype="multipart/form-data"
+                id="image-upload-form">
+                <label class="btn btn-ghost btn-sm image-upload-btn" for="image-upload-input">
+                  <span class="btn-label">직접 업로드</span>
+                </label>
+                <input type="file" name="file" id="image-upload-input" accept="image/*" hidden>
               </form>
             </div>
-            {% endfor %}
+            <div class="image-source-row">
+
+              <div class="image-gallery">
+                {% for url in (selected.image_urls or []) %}
+                <div class="image-gallery-item">
+                  <img src="{{ url }}" alt="">
+                  <form method="post" action="/discover/{{ selected.id }}/images/remove">
+                    <input type="hidden" name="image_url" value="{{ url }}">
+                    <button type="submit" class="image-remove-btn" title="삭제">×</button>
+                  </form>
+                </div>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="image-candidates-grid" id="image-candidates-grid" hidden></div>
           </div>
-          <div class="image-source-row">
-            <button type="button" class="btn btn-ghost" id="naver-image-search-btn"
-              data-keyword="{{ selected.product_name or '' }}">
-              <span class="btn-label">네이버에서 더 찾기</span>
-              <span class="btn-spinner" hidden></span>
-            </button>
-            <form method="post" action="/discover/{{ selected.id }}/images/upload" enctype="multipart/form-data"
-              id="image-upload-form">
-              <label class="btn btn-ghost image-upload-btn" for="image-upload-input">
-                <span class="btn-label">직접 업로드</span>
-              </label>
-              <input type="file" name="file" id="image-upload-input" accept="image/*" hidden>
-            </form>
-          </div>
-          <div class="image-candidates-grid" id="image-candidates-grid" hidden></div>
         </div>
         <script>
           document.getElementById("image-upload-input").addEventListener("change", function (e) {
@@ -277,20 +273,9 @@
           });
         </script>
 
-
-
-        <label>딥링크</label>
+        <label class="label-emphasis">🔗 딥링크</label>
         <input type="text" name="deeplink" value="{{ selected.deeplink or '' }}"
           placeholder="쿠팡 파트너스에서 생성한 딥링크 URL (수동 등록 상품은 직접 입력)">
-    </div>
-
-
-
-
-
-    <div class="card-field">
-      <label>별점 요약 (선택)</label>
-      <input type="text" name="rating_summary" placeholder="예: 4.8/5 (리뷰 320개)">
     </div>
     </form>
     <script>

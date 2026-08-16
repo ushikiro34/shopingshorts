@@ -13,7 +13,7 @@
       ) %}
         <span class="list-item-title">{{ i.youtube_title or "(제목 없음)" }}</span>
         <span class="pill {% if i.status == 'published' %}pill-success{% elif i.status == 'ready_to_publish' %}pill-danger{% else %}pill-gray{% endif %}">
-          {% if i.status == 'pending_review' %}냉각중{% elif i.status == 'ready_to_publish' %}게시가능{% else %}게시완료{% endif %}
+          {% if i.status == 'pending_review' %}냉각중{% elif i.status == 'ready_to_publish' %}게시가능{% else %}업로드완료(비공개){% endif %}
         </span>
       {% endcall %}
       {% endfor %}
@@ -54,18 +54,19 @@
           <button class="btn btn-ghost" type="submit">취소</button>
         </form>
       {% elif selected.status == 'ready_to_publish' %}
-        <div class="warning-text">⚠️ 클릭 시 즉시 유튜브에 업로드됩니다</div>
+        <div class="warning-text">⚠️ 클릭 시 유튜브에 비공개로 업로드됩니다. 실제 공개/예약은 이후 유튜브 스튜디오에서 직접 진행해야 해요.</div>
         <form method="post" action="/publish/{{ selected.id }}/publish"
-              onsubmit="return confirm('정말 게시할까요? 되돌릴 수 없어요');">
-          <button class="btn btn-danger" type="submit">게시</button>
+              onsubmit="return confirm('유튜브에 비공개로 업로드할까요? (실제 공개는 유튜브 스튜디오에서 별도로 진행해야 해요)');">
+          <button class="btn btn-danger" type="submit">업로드</button>
         </form>
         <form method="post" action="/publish/{{ selected.id }}/cancel">
           <button class="btn btn-ghost" type="submit">취소</button>
         </form>
       {% elif selected.status == 'published' %}
-        <p style="text-align:center;color:var(--success);">✅ 게시완료</p>
+        <p style="text-align:center;color:var(--success);">✅ 유튜브 업로드 완료 (비공개)</p>
+        <p class="warning-text">아직 비공개 상태예요 — 유튜브 스튜디오에서 공개 시점을 직접 설정하세요.</p>
         {% if selected.youtube_video_id %}
-        <a class="btn btn-ghost" href="https://youtube.com/watch?v={{ selected.youtube_video_id }}" target="_blank">유튜브에서 보기</a>
+        <a class="btn btn-ghost" href="https://studio.youtube.com/video/{{ selected.youtube_video_id }}/edit" target="_blank">유튜브 스튜디오에서 공개 설정</a>
         {% endif %}
       {% endif %}
       {% if render_job and render_job.status == 'done' %}
